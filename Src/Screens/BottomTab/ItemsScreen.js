@@ -40,6 +40,7 @@ const ItemsScreen = ({ navigation, route }) => {
   const { showLoader, hideLoader } = useLoader();
 const [ipModal, setIpModal] = useState(false);
 const [printerIP, setPrinterIP] = useState("");
+const [pendingOrder, setPendingOrder] = useState(null);
   // =========================
   // 🔥 API CALL
   // =========================
@@ -55,28 +56,32 @@ const [printerIP, setPrinterIP] = useState("");
   }
   return true;
 };
-const handleSaveIP = async () => {
-  await savePrinterIP(printerIP);
-  const ready = await checkPrinterSetup();
-console.log(ready,"ready");
+const handleSaveIP = async () => {}
+// const handleSaveIP = async () => {
+//   await savePrinterIP(printerIP);
 
-  if (ready) {
-    // try {
-    //   await printKOT(res.data); 
-    //     navigation.navigate("OrderScreen", {
-    //       tableId: res.data.table_id,
-    //       tableName: route.params?.tableName,
-    //       cart: apiCart,
-    //       orderData: res.data,
-    //       orderType: res.data.order_type,
-    //       chairs: [res.data.chair_no],
-    //     });
-    // } catch (e) {
-    //   if (e === "NO_IP") setIpModal(true);
-    // }
-  }
-  setIpModal(false);
-};
+//   setIpModal(false);
+
+//   // 🔥 CONTINUE PRINT AFTER SAVE
+//   if (pendingOrder) {
+//     try {
+//       await printKOT(pendingOrder);
+
+//       navigation.navigate("OrderScreen", {
+//         tableId: pendingOrder.table_id,
+//         tableName: route.params?.tableName,
+//         cart: pendingOrder.items,
+//         orderData: pendingOrder,
+//         orderType: pendingOrder.order_type,
+//         chairs: [pendingOrder.chair_no],
+//       });
+
+//       setPendingOrder(null); // clear
+//     } catch (e) {
+//       console.log("❌ PRINT AFTER SAVE FAILED", e);
+//     }
+//   }
+// };
 const requestBluetoothPermissions = async () => {
   if (Platform.OS === "android") {
     try {
@@ -228,12 +233,12 @@ const handleDone = async () => {
           variation_id: i.variation_id,
         }));
 //         await requestBluetoothPermissions();
-const ready = await checkPrinterSetup();
-console.log(ready,"ready");
+//const ready = await checkPrinterSetup();
+//console.log(ready,"ready");
 
-  if (ready) {
-    try {
-      await printKOT(res.data); 
+  // if (ready) {
+  //   try {
+      //await printKOT(res.data); 
         navigation.navigate("OrderScreen", {
           tableId: res.data.table_id,
           tableName: route.params?.tableName,
@@ -242,10 +247,10 @@ console.log(ready,"ready");
           orderType: res.data.order_type,
           chairs: [res.data.chair_no],
         });
-    } catch (e) {
-      if (e === "NO_IP") setIpModal(true);
-    }
-  }
+    // } catch (e) {
+    //   if (e === "NO_IP") setIpModal(true);
+    // }
+  //}
         // ✅ Navigate back to OrderScreen with updated data
        
 
@@ -274,12 +279,17 @@ console.log(ready,"ready");
         variation_id: i.variation_id,
       }));
 //  await printKOT(response.data); // 🔥 PRINT HERE
-  const ready = await checkPrinterSetup();
-console.log(ready,"ready");
+//   const ready = await checkPrinterSetup();
+// console.log(ready,"ready");
+// if (!ready) {
+//   setPendingOrder(response.data); // 🧠 store order
+//   return;
+// }
 
-  if (ready) {
-    try {
-      await printKOT(response.data); 
+// await printKOT(response.data);
+//   if (ready) {
+    //try {
+      // await printKOT(response.data); 
         navigation.navigate("OrderScreen", {
         tableId: response.data.table_id,
         tableName: route.params?.tableName,
@@ -288,10 +298,10 @@ console.log(ready,"ready");
         orderType: response.data.order_type,
         chairs: [response.data.chair_no],
       });// 🔥 AUTO PRINT
-    } catch (e) {
-      if (e === "NO_IP") setIpModal(true);
-    }
-  }
+    // } catch (e) {
+    //   if (e === "NO_IP") setIpModal(true);
+    // }
+  //}
 
       // ✅ Navigate to OrderScreen
       // navigation.navigate("OrderScreen", {
