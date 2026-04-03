@@ -1,4 +1,4 @@
-package com.instabillr
+package com.sarasBilling
 
 import android.app.Application
 import com.facebook.react.PackageList

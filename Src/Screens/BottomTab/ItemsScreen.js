@@ -41,6 +41,9 @@ const ItemsScreen = ({ navigation, route }) => {
 const [ipModal, setIpModal] = useState(false);
 const [printerIP, setPrinterIP] = useState("");
 const [pendingOrder, setPendingOrder] = useState(null);
+   const [userName, setUserName] = useState("");
+   const [isSubmitting, setIsSubmitting] = useState(false);
+const [previewModal, setPreviewModal] = useState(false);
   // =========================
   // 🔥 API CALL
   // =========================
@@ -56,47 +59,26 @@ const [pendingOrder, setPendingOrder] = useState(null);
   }
   return true;
 };
-const handleSaveIP = async () => {}
-// const handleSaveIP = async () => {
-//   await savePrinterIP(printerIP);
+const handleSaveIP = async () => {
+  try {
+    showLoader();
 
-//   setIpModal(false);
+    await savePrinterIP(printerIP);
+    setIpModal(false);
 
-//   // 🔥 CONTINUE PRINT AFTER SAVE
-//   if (pendingOrder) {
-//     try {
-//       await printKOT(pendingOrder);
-
-//       navigation.navigate("OrderScreen", {
-//         tableId: pendingOrder.table_id,
-//         tableName: route.params?.tableName,
-//         cart: pendingOrder.items,
-//         orderData: pendingOrder,
-//         orderType: pendingOrder.order_type,
-//         chairs: [pendingOrder.chair_no],
-//       });
-
-//       setPendingOrder(null); // clear
-//     } catch (e) {
-//       console.log("❌ PRINT AFTER SAVE FAILED", e);
-//     }
-//   }
-// };
-const requestBluetoothPermissions = async () => {
-  if (Platform.OS === "android") {
-    try {
-      const granted = await PermissionsAndroid.requestMultiple([
-        PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
-        PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
-        PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-      ]);
-
-      console.log("Permissions:", granted);
-    } catch (err) {
-      console.warn(err);
+    // ✅ CONTINUE AFTER SAVE
+    if (pendingOrder) {
+      setPendingOrder(false);
+      await processOrder();
     }
+
+  } catch (e) {
+    console.log("❌ SAVE IP ERROR", e);
+  } finally {
+    hideLoader();
   }
 };
+
   const fetchProducts = async () => {
     try {
             showLoader();
@@ -108,6 +90,8 @@ const requestBluetoothPermissions = async () => {
           id: item.product_id.toString(),
           name: item.product_name,
           price: parseFloat(item.unit_price_inc_tax),
+            sku: item.sku_no, // ✅ add this
+
           category: "Non-Veg", // 🔥 TEMP (update when API gives category)
         }));
 
@@ -119,21 +103,32 @@ const requestBluetoothPermissions = async () => {
       console.log("❌ Product API Error", err);
     }
   };
+  useEffect(() => {
+  const getUser = async () => {
+    const userData = await AsyncStorage.getItem("user");
+    if (userData) {
+      const parsed = JSON.parse(userData);
+      setUserName(parsed.username); // or username
+    }
+  };
+  getUser();
+}, []);
 
   // =========================
   // 🔍 FILTER
   // =========================
-  const filteredData = products.filter((item) => {
-    const matchSearch = item.name
-      .toLowerCase()
-      .includes(search.toLowerCase());
+const filteredData = products.filter((item) => {
+const searchText = search.trim().toLowerCase();
+const matchSearch =
+  item.name?.toLowerCase().includes(searchText) ||
+  item.sku?.includes(searchText);// ✅ SKU search added
 
-    const matchCategory =
-      selectedCategory === "All" ||
-      item.category === selectedCategory;
+  const matchCategory =
+    selectedCategory === "All" ||
+    item.category === selectedCategory;
 
-    return matchSearch && matchCategory;
-  });
+  return matchSearch && matchCategory;
+});
 
 
 const addItem = (item) => {
@@ -167,7 +162,7 @@ const removeItem = (item) => {
 };
 // Called when returning from ItemsScreen
 // Merge incoming items into the current cart without duplicates
-        console.log(route.params,"route.params");
+        // console.log(route.params,"route.params");
         
 // const printKOT = async (order) => {
 //   try {
@@ -194,13 +189,10 @@ const removeItem = (item) => {
 //     console.log("❌ Print Error:", err);
 //   }
 // };
-const handleDone = async () => {
-  if (cart.length === 0) {
-    alert("Please add at least one item");
-    return;
-  }
-
+const processOrder = async () => {
   try {
+    showLoader();
+
     const existingOrderId = route.params?.orderId;
 
     const payload = {
@@ -214,115 +206,100 @@ const handleDone = async () => {
       })),
     };
 
-    // =====================================
-    // ✅ ADD ITEMS
-    // =====================================
+    let response;
+
+    // ✅ API CALL
     if (existingOrderId) {
-      const res = await ApiService.addItemsToOrder(existingOrderId, {
+      response = await ApiService.addItemsToOrder(existingOrderId, {
         items: payload.items,
       });
+    } else {
+      response = await ApiService.createOrder(payload);
+    }
 
-      if (res.status) {
-        console.log("✅ Items added:", res.data);
-
-        const apiCart = res.data.items.map((i) => ({
-          id: i.product_id,
-          name: i.product_name,
-          qty: parseFloat(i.qty),
-          price: parseFloat(i.unit_price_inc_tax),
-          variation_id: i.variation_id,
-        }));
-//         await requestBluetoothPermissions();
-//const ready = await checkPrinterSetup();
-//console.log(ready,"ready");
-
-  // if (ready) {
-  //   try {
-      //await printKOT(res.data); 
-        navigation.navigate("OrderScreen", {
-          tableId: res.data.table_id,
-          tableName: route.params?.tableName,
-          cart: apiCart,
-          orderData: res.data,
-          orderType: res.data.order_type,
-          chairs: [res.data.chair_no],
-        });
-    // } catch (e) {
-    //   if (e === "NO_IP") setIpModal(true);
-    // }
-  //}
-        // ✅ Navigate back to OrderScreen with updated data
-       
-
-        route.params?.onSelectProduct?.(apiCart);
-
-      } else {
-        alert(res.message || "Failed to add items");
-      }
-
+    if (!response.status) {
+      alert(response.message || "API failed");
       return;
     }
 
-    // =====================================
-    // ✅ CREATE ORDER
-    // =====================================
-    const response = await ApiService.createOrder(payload);
+    const data = response.data;
 
-    if (response.status) {
-      console.log("✅ Order Created:", response.data);
+    const apiCart = data.items.map((i) => ({
+      id: i.product_id,
+      name: i.product_name,
+      qty: parseFloat(i.qty),
+      price: parseFloat(i.unit_price_inc_tax),
+      variation_id: i.variation_id,
+    }));
 
-      const apiCart = response.data.items.map((i) => ({
-        id: i.product_id,
-        name: i.product_name,
-        qty: parseFloat(i.qty),
-        price: parseFloat(i.unit_price_inc_tax),
-        variation_id: i.variation_id,
-      }));
-//  await printKOT(response.data); // 🔥 PRINT HERE
-//   const ready = await checkPrinterSetup();
-// console.log(ready,"ready");
-// if (!ready) {
-//   setPendingOrder(response.data); // 🧠 store order
-//   return;
-// }
+    // ✅ PRINT
+    await printKOT(data, userName);
 
-// await printKOT(response.data);
-//   if (ready) {
-    //try {
-      // await printKOT(response.data); 
-        navigation.navigate("OrderScreen", {
-        tableId: response.data.table_id,
-        tableName: route.params?.tableName,
-        cart: apiCart,
-        orderData: response.data,
-        orderType: response.data.order_type,
-        chairs: [response.data.chair_no],
-      });// 🔥 AUTO PRINT
-    // } catch (e) {
-    //   if (e === "NO_IP") setIpModal(true);
-    // }
-  //}
+    // ✅ NAVIGATE
+    navigation.navigate("OrderScreen", {
+      tableId: data.table_id,
+      tableName: route.params?.tableName,
+      cart: apiCart,
+      orderData: data,
+      orderType: data.order_type,
+      chairs: [data.chair_no],
+    });
 
-      // ✅ Navigate to OrderScreen
-      // navigation.navigate("OrderScreen", {
-      //   tableId: response.data.table_id,
-      //   tableName: route.params?.tableName,
-      //   cart: apiCart,
-      //   orderData: response.data,
-      //   orderType: response.data.order_type,
-      //   chairs: [response.data.chair_no],
-      // });
+    route.params?.onSelectProduct?.(apiCart);
 
-      route.params?.onSelectProduct?.(apiCart);
+  } catch (e) {
+  console.log("❌ PROCESS ERROR:", e);
 
-    } else {
-      alert(response.message || "Failed to create order");
-    }
+  const errorText =
+    e?.message ||
+    (typeof e === "string" ? e : JSON.stringify(e));
 
-  } catch (error) {
-    console.log("❌ API Error:", error);
-    alert("Something went wrong");
+  if (errorText.includes("failed to connect printer")) {
+    Alert.alert("Printer Error", "Unable to connect to printer. Check WiFi.");
+  } else {
+    Alert.alert("Error", errorText);
   }
+}
+finally {
+    setIsSubmitting(false); // ✅ enable again AFTER process
+
+    hideLoader();
+  }
+};
+const confirmOrder = async () => {
+  setPreviewModal(false);
+
+  setIsSubmitting(true);
+
+  const ip = await AsyncStorage.getItem("PRINTER_IP");
+
+  if (!ip) {
+    setPendingOrder(true);
+    setIpModal(true);
+    setIsSubmitting(false);
+    return;
+  }
+
+  await processOrder();
+};
+const handleDone = async () => {
+  if (cart.length === 0) {
+    alert("Please add at least one item");
+    return;
+  }
+
+  setIsSubmitting(true); // 🔥 disable button
+
+  const ip = await AsyncStorage.getItem("PRINTER_IP");
+
+  if (!ip) {
+    setPendingOrder(true);
+    setIpModal(true);
+    setIsSubmitting(false); // ❗ re-enable if stopped
+    return;
+  }
+
+  await processOrder();
 };
 const getQty = (id) => {
   const item = cart.find((i) => i.id === id);
@@ -374,7 +351,9 @@ const confirmLogout = async () => {
       />
 
       <View style={{ flex: 1 }}>
-        <Text style={styles.name}>{item.name}</Text>
+<Text style={styles.name}>
+  {item.name} ({item.sku})
+</Text>        
         <Text style={styles.price}>₹{item.price}</Text>
       </View>
 
@@ -437,6 +416,7 @@ const confirmLogout = async () => {
         <TextInput
           placeholder="Search food..."
           value={search}
+          placeholderTextColor={'#888'}
           onChangeText={setSearch}
           style={styles.input}
         />
@@ -476,15 +456,37 @@ contentContainerStyle={{
     paddingBottom: hp("5%"),
   }}
       />
-      {cart.length > 0 && (
+     {cart.length > 0 && (
   <View style={styles.footer}>
     <Text style={styles.itemCount}>
       {cart.length} Items Selected
     </Text>
 
-    <TouchableOpacity style={styles.doneBtn} onPress={handleDone}>
-      <Text style={styles.doneText}>DONE</Text>
-    </TouchableOpacity>
+    <View style={{ flexDirection: "row" }}>
+      
+      {/* 👁️ VIEW BUTTON */}
+      <TouchableOpacity
+        style={styles.viewBtn}
+        onPress={() => setPreviewModal(true)}
+      >
+        <Text style={styles.viewText}>VIEW</Text>
+      </TouchableOpacity>
+
+      {/* ✅ DONE BUTTON */}
+      <TouchableOpacity
+        style={[
+          styles.doneBtn,
+          isSubmitting && { opacity: 0.5 }
+        ]}
+        onPress={handleDone}
+        disabled={isSubmitting}
+      >
+        <Text style={styles.doneText}>
+          {isSubmitting ? "Processing..." : "DONE"}
+        </Text>
+      </TouchableOpacity>
+
+    </View>
   </View>
 )}
 <Modal visible={ipModal} transparent animationType="fade">
@@ -501,6 +503,8 @@ contentContainerStyle={{
       <TextInput
         placeholder="192.168.1.100"
         value={printerIP}
+                  placeholderTextColor={'#999'}
+
         onChangeText={setPrinterIP}
         style={styles.input1}
         keyboardType="numeric"
@@ -530,6 +534,56 @@ contentContainerStyle={{
     </View>
   </View>
 </Modal>
+<Modal visible={previewModal} transparent animationType="fade">
+  <View style={styles.overlay}>
+    <View style={styles.modalCard}>
+
+      {/* Title */}
+      {/* <Text style={styles.title}>Confirm Order</Text> */}
+
+      
+      {/* 🔥 HEADER WITH CLOSE BUTTON */}
+      <View style={styles.modalHeader}>
+        <Text style={styles.title}>Confirm Order</Text>
+
+        <TouchableOpacity   style={styles.closeBtn}
+ onPress={() => setPreviewModal(false)}>
+          <Icon name="close" size={22} color="#333" />
+        </TouchableOpacity>
+      </View>
+
+      {/* Item List */}
+      <FlatList
+        data={cart}
+        keyExtractor={(item) => item.id}
+        style={{ maxHeight: hp("40%") }} // ✅ prevent overflow
+        renderItem={({ item }) => (
+          <View style={styles.previewRow}>
+            <Text style={styles.previewName}>{item.name}</Text>
+            <Text style={styles.previewQty}>x {item.qty}</Text>
+          </View>
+        )}
+      />
+
+      {/* Buttons */}
+      {/* <View style={[styles.btnRow,{marginTop:10}]}>
+        <TouchableOpacity
+          style={styles.cancelBtn}
+          onPress={() => setPreviewModal(false)}
+        >
+          <Text style={styles.cancelText}>Cancel</Text>
+        </TouchableOpacity> */}
+
+        {/* <TouchableOpacity
+          style={styles.saveBtn}
+          onPress={confirmOrder}
+        >
+          <Text style={styles.saveText}>Confirm</Text>
+        </TouchableOpacity> */}
+      
+    </View>
+  </View>
+</Modal>
     </SafeAreaView>
   );
 };
@@ -540,6 +594,20 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#F2F2F2",
   },
+  closeBtn: {
+  width: 32,
+  height: 32,
+  borderRadius: 16, // 🔥 makes it round
+  backgroundColor: "#f2f2f2", // light overlay
+  justifyContent: "center",
+  alignItems: "center",
+},
+  modalHeader: {
+  flexDirection: "row",
+  justifyContent: "space-between",
+  alignItems: "center",
+  marginBottom: 10,
+},
 categoryContainer: {
   flexDirection: "row",
   paddingHorizontal: wp("3%"),
@@ -602,7 +670,39 @@ logoutBtn: {
     fontFamily: Fonts.medium,
     color: "#333",
   },
+viewBtn: {
+  backgroundColor: "#fff",
+  borderWidth: 1,
+  borderColor: colors.primary,
+  paddingVertical: hp("1.2%"),
+  paddingHorizontal: wp("5%"),
+  borderRadius: 8,
+  marginRight: wp("2%"),
+},
+previewRow: {
+  flexDirection: "row",
+  justifyContent: "space-between",
+  paddingVertical: 8,
+  borderBottomWidth: 1,
+  borderColor: "#eee",
+},
 
+previewName: {
+  fontSize: 14,
+  fontFamily: fonts.medium,
+  color: "#333",
+},
+
+previewQty: {
+  fontSize: 14,
+  fontFamily: fonts.bold,
+  color: colors.primary,
+},
+viewText: {
+  color: colors.primary,
+  fontFamily: fonts.bold,
+  fontSize: wp("4%"),
+},
   /* ITEM */
   itemRow: {
     flexDirection: "row",

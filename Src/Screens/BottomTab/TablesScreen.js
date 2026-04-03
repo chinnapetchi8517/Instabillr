@@ -149,7 +149,7 @@ useEffect(() => {
     const userData = await AsyncStorage.getItem("user");
     if (userData) {
       const parsed = JSON.parse(userData);
-      setUserName(parsed.first_name); // or username
+      setUserName(parsed.username); // or username
     }
   };
   getUser();
@@ -201,7 +201,7 @@ useEffect(() => {
   };
 
   const renderTable = ({ item }) => {
-    console.log(item,"itemitem");
+    // console.log(item,"itemitem");
     
     return (
       <TouchableOpacity

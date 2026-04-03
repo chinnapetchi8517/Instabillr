@@ -50,7 +50,7 @@ const onChangeDate = (event, date) => {
         setTables(formatted);
       }
     } catch (error) {
-      console.log("❌ Table API Error:", error);
+      // console.log("❌ Table API Error:", error);
     } finally {
       setLoading(false);
     }

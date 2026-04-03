@@ -1,29 +1,27 @@
-import React, { useEffect } from "react";
-import { View, Image, StyleSheet } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import React, { useEffect } from 'react';
+import { View, Image, StyleSheet } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import {
   widthPercentageToDP as wp,
-  heightPercentageToDP as hp
-} from "react-native-responsive-screen";
+  heightPercentageToDP as hp,
+} from 'react-native-responsive-screen';
 
 export default function SplashScreen({ navigation }) {
-
   useEffect(() => {
     const checkLogin = async () => {
       try {
-        const token = await AsyncStorage.getItem("token");
+        const token = await AsyncStorage.getItem('token');
 
         setTimeout(() => {
           if (token) {
-            navigation.replace("Main"); // ✅ user already logged in
+            navigation.replace('Main'); // ✅ user already logged in
           } else {
-            navigation.replace("Onboarding"); // ❌ first time user
+            navigation.replace('Onboarding'); // ❌ first time user
           }
         }, 2000);
-
       } catch (error) {
-        navigation.replace("Onboarding");
+        navigation.replace('Onboarding');
       }
     };
 
@@ -33,7 +31,7 @@ export default function SplashScreen({ navigation }) {
   return (
     <View style={styles.container}>
       <Image
-        source={require("../../assets/Images/applogo.png")}
+        source={require('../../assets/Images/applogo.png')}
         style={styles.logo}
       />
     </View>
@@ -43,13 +41,13 @@ export default function SplashScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#ffffff",
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
   },
   logo: {
-    width: wp("90%"),
-    height: hp("75%"),
-    resizeMode: "contain",
+    width: wp('90%'),
+    height: hp('75%'),
+    resizeMode: 'contain',
   },
 });
