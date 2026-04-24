@@ -2,7 +2,8 @@ import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export const api = axios.create({
-  baseURL: 'https://jkansfoods.sarasbillingpro.com/api',
+ // baseURL: 'https://jkans.cnxhub.in/api',  \\live
+   baseURL: 'https://jkansfoods.sarasbillingpro.com/api',
   timeout: 10000, 
   headers: {
     Accept: "application/json",

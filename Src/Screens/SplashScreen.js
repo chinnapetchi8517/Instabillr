@@ -17,11 +17,11 @@ export default function SplashScreen({ navigation }) {
           if (token) {
             navigation.replace('Main'); // ✅ user already logged in
           } else {
-            navigation.replace('Onboarding'); // ❌ first time user
+            navigation.replace('Login'); // ❌ first time user
           }
         }, 2000);
       } catch (error) {
-        navigation.replace('Onboarding');
+        navigation.replace('Login');
       }
     };
 
@@ -31,7 +31,7 @@ export default function SplashScreen({ navigation }) {
   return (
     <View style={styles.container}>
       <Image
-        source={require('../../assets/Images/applogo.png')}
+        source={require('../../assets/Images/icon.png')}
         style={styles.logo}
       />
     </View>

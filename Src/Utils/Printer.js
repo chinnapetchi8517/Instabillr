@@ -5,7 +5,7 @@ const PRINTER_IP_KEY = "PRINTER_IP";
 const TOTAL_WIDTH = 48;
 
 // 🔥 Toggle this for testing
-const IS_MOCK = false;
+const IS_MOCK = true;
 
 export const savePrinterIP = async (ip) => {
   await AsyncStorage.setItem(PRINTER_IP_KEY, ip);
@@ -29,7 +29,7 @@ const leftRight = (left = "", right = "") => {
 const LINE = "-".repeat(TOTAL_WIDTH) + "\n";
 
 // 🔹 build KOT
-const buildKOT = (order, userName) => {
+const buildKOT = (order, userName,tableName) => {
   let txt = "";
 
   const d = new Date();
@@ -37,7 +37,7 @@ const buildKOT = (order, userName) => {
   const timeStr = d.toLocaleTimeString();
 
   txt += "\n";
-  txt += centerText(`TABLE : ${order.table_id}`) + "\n";
+  txt += centerText(`TABLE : ${tableName}`) + "\n";
   txt += `Kot No : ${order.id}\n`;
   txt += leftRight(`Date : ${dateStr}`, `Time : ${timeStr}`);
   txt += `Waiter : ${userName || "N/A"}\n`;
@@ -69,14 +69,14 @@ const buildKOT = (order, userName) => {
 };
 
 // ✅ MAIN PRINT
-export const printKOT = async (order, userName) => {
+export const printKOT = async (order, userName,tableName) => {
   try {
     const ip = await getPrinterIP();
     console.log("📌 IP:", ip);
 
     if (!ip) throw "NO_IP";
 
-    const kotText = buildKOT(order, userName);
+    const kotText = buildKOT(order, userName,tableName);
 
     // ✅ MOCK MODE
     if (IS_MOCK) {

@@ -246,8 +246,8 @@ useEffect(() => {
     </View>
 
     {/* LOGOUT BUTTON */}
-    <TouchableOpacity onPress={handleLogout} style={styles.logoutBtn}>
-      <Icons name="logout" size={20} color={colors.primary} />
+    <TouchableOpacity onPress={()=>navigation.navigate("SettingsScreen",{userName:userName})} style={styles.logoutBtn}>
+      <Icons name="cog-outline" size={20} color={colors.primary} />
     </TouchableOpacity>
 
   </View>

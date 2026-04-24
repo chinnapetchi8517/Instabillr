@@ -21,6 +21,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useLoader } from "../../Context/LoaderContext";
 import Icons from "react-native-vector-icons/MaterialCommunityIcons";
 import Icon from "react-native-vector-icons/Ionicons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
 export default function ReportsScreen({navigation}) {
     const [tables, setTables] = useState([]);
   const [selectedTable, setSelectedTable] = useState(null);
@@ -31,7 +33,17 @@ export default function ReportsScreen({navigation}) {
   const [totalRevenues, setTotalRevenue] = useState(0);
 const [showDatePicker, setShowDatePicker] = useState(false);
   const { showLoader, hideLoader } = useLoader();
-
+   const [userName, setUserName] = useState("");
+useEffect(() => {
+  const getUser = async () => {
+    const userData = await AsyncStorage.getItem("user");
+    if (userData) {
+      const parsed = JSON.parse(userData);
+      setUserName(parsed.username); // or username
+    }
+  };
+  getUser();
+}, []);
 // Handler when date is selected
 const onChangeDate = (event, date) => {
   setShowDatePicker(false); // hide picker
@@ -281,9 +293,11 @@ const renderItem = ({ item }) => {
   <Text style={styles.headerTitle}>Reports</Text>
 
   {/* RIGHT - Logout Icon */}
-  <TouchableOpacity  style={styles.logoutBtn} onPress={handleLogout}>
-    <Icons name="logout" size={22} color={'#fff'} />
-  </TouchableOpacity>
+  <TouchableOpacity 
+  onPress={()=>navigation.navigate("SettingsScreen",{userName:userName})} 
+  style={styles.logoutBtn}>
+       <Icons name="cog-outline" size={20} color={colors.primary} />
+     </TouchableOpacity>
 
 </View>
        <View style={styles.container}>
@@ -387,7 +401,7 @@ const styles = StyleSheet.create({
 },
 logoutBtn: {
   marginRight: wp("3%"),
-  backgroundColor: "rgba(255,255,255,0.2)",
+  backgroundColor: "#FFFFFF",
   padding: wp("2%"),
   borderRadius: 8,
 },

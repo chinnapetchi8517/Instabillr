@@ -19,10 +19,7 @@ import {
 import { ApiService } from '../Services/authService';
 import { useLoader } from '../Context/LoaderContext';
 import { useFocusEffect } from '@react-navigation/native'; // ✅ added
-import {
-  printBiller,
-  saveBillPrinterIP,
-} from '../Utils/Printer_Bill';
+import { printBiller, saveBillPrinterIP } from '../Utils/Printer_Bill';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 export default function OrderScreen({ route, navigation }) {
   const { tableId, tableName } = route.params;
@@ -44,6 +41,8 @@ export default function OrderScreen({ route, navigation }) {
   const [ipModal, setIpModal] = useState(false);
   const [printerIP, setPrinterIP] = useState('');
   const [pendingOrder, setPendingOrder] = useState(null);
+  const [tableModal, setTableModal] = useState(false);
+  const [tables, setTables] = useState([]);
   const [editMeta, setEditMeta] = useState({
     table_id: null,
     chair_no: null,
@@ -55,6 +54,7 @@ export default function OrderScreen({ route, navigation }) {
   useFocusEffect(
     useCallback(() => {
       fetchOrderList();
+      fetchTables();
     }, []),
   );
   useEffect(() => {
@@ -93,7 +93,41 @@ export default function OrderScreen({ route, navigation }) {
       Alert.alert('Error', 'Failed to fetch orders');
     }
   };
+  const mapStatus = status => {
+    switch (status) {
+      case 'free':
+        return 'available';
+      case 'occupied':
+        return 'occupied';
+      default:
+        return 'Partial';
+    }
+  };
+  const fetchTables = async () => {
+    try {
+      showLoader();
 
+      const res = await ApiService.getTables();
+
+      if (res.status) {
+        const formatted = res.data.map(item => ({
+          id: item.id,
+          name: item.name,
+          status: mapStatus(item.table_status),
+          availableChairs: item.available_chairs,
+          occupiedChairs: item.occupied_chairs,
+          chairs: item.chairs,
+          orders: item?.open_orders_count, // 🔥 IMPORTANT
+        }));
+
+        setTables(formatted);
+      }
+    } catch (error) {
+      console.log('❌ Table API Error:', error);
+    } finally {
+      hideLoader();
+    }
+  };
   // =========================
   // 🟢 Status Color
   // =========================
@@ -111,19 +145,6 @@ export default function OrderScreen({ route, navigation }) {
         return '#999';
     }
   };
-  // const getStatusColor = (status) => {
-  //   switch (status) {
-  //     case "open":
-  //       return "#28a745";
-  //     case "completed":
-  //       return "#007bff";
-  //     case "cancelled":
-  //       return "#dc3545";
-  //     default:
-  //       return "#999";
-  //   }
-  // };
-
   // =========================
   // Cancel Order
   // =========================
@@ -154,121 +175,96 @@ export default function OrderScreen({ route, navigation }) {
       hideLoader();
     }
   };
-  const generatePreview = (order, userName, location) => {
-    console.log(location);
 
-    let output = '';
-
-    const LINE = '--------------------------------';
-
-    output += '\n';
-    output += '        JKANS FOODS\n';
-    output += '--------------------------------\n';
-    output += `TABLE : ${order.table_id}\n`;
-    output += `KOT NO : ${order.id}\n`;
-    output += `Waiter : ${location?.address}\n`;
-    output += `Waiter : ${userName}\n`;
-
-    output += '--------------------------------\n';
-
-    output += 'SNo  Name           Rate Qty Amt\n';
-    output += '--------------------------------\n';
-
-    order.items.forEach((item, i) => {
-      const name = item.product_name.substring(0, 12);
-      const rate = parseFloat(item.unit_price_inc_tax);
-      const qty = parseFloat(item.qty);
-      const amt = parseFloat(item.total_price);
-
-      output += `${i + 1}   ${name}   ${rate}  ${qty}  ${amt}\n`;
-    });
-
-    output += '--------------------------------\n';
-    output += `TOTAL : ${order.total}\n`;
-
-    console.log(output);
-  };
-  const checkPrinterSetup = async () => {
-    const ip = await AsyncStorage.getItem('BILL_PRINTER_IP');
-
-    if (!ip) {
-      setIpModal(true);
-      return false;
-    }
-    return true;
-  };
   const processBill = async (item, id) => {
-  try {
-    showLoader();
+    try {
+      showLoader();
 
-    const res = await ApiService.generateBill(id);
+      const res = await ApiService.generateBill(id);
 
-    if (res.status) {
-      await printBiller(item, userName, location, res.data);
+      if (res.status) {
+        // ✅ CONDITION: Skip printer for location_id 19
+        // if (location?.location_id != 19) {
+        await printBiller(item, userName, location, res.data, tableName);
+        // } else {
+        //   console.log("🛑 Printing skipped for location 19");
+        // }
 
-      navigation.navigate('Main', {
-        screen: 'Tables',
-      });
-    } else {
-      Alert.alert('Error', res.message);
+        navigation.navigate('Main', {
+          screen: 'Tables',
+        });
+      } else {
+        Alert.alert('Error', res.message);
+      }
+    } catch (e) {
+      console.log('❌ PROCESS ERROR:', e);
+
+      const errorText =
+        e?.message || (typeof e === 'string' ? e : JSON.stringify(e));
+
+      if (errorText.includes('failed to connect printer')) {
+        Alert.alert(
+          'Printer Error',
+          'Unable to connect to printer. Check WiFi.',
+        );
+      } else {
+        Alert.alert('Error', errorText);
+      }
+    } finally {
+      hideLoader();
     }
-  }  catch (e) {
-  console.log("❌ PROCESS ERROR:", e);
+  };
+  const handleBill = async (item, id) => {
+    Alert.alert(
+      'Generate Bill',
+      'Are you sure you want to generate this bill?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Yes',
+          onPress: async () => {
+            // ✅ 🛑 SKIP PRINTER FOR LOCATION 19
+            // if (location?.location_id == 19) {
+            //   console.log("🛑 Printing skipped for location 19");
 
-  const errorText =
-    e?.message ||
-    (typeof e === "string" ? e : JSON.stringify(e));
+            //   // 👉 Directly generate bill (no IP check, no printer)
+            //   await processBill(item, id);
+            //   return;
+            // }
 
-  if (errorText.includes("failed to connect printer")) {
-    Alert.alert("Printer Error", "Unable to connect to printer. Check WiFi.");
-  } else {
-    Alert.alert("Error", errorText);
-  }
-} finally {
-    hideLoader();
-  }
-};
-const handleBill = async (item, id) => {
-  Alert.alert(
-    'Generate Bill',
-    'Are you sure you want to generate this bill?',
-    [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Yes',
-        onPress: async () => {
-          const savedIP = await AsyncStorage.getItem('BILL_PRINTER_IP');
+            // ✅ Normal flow (other locations)
+            const savedIP = await AsyncStorage.getItem('BILL_PRINTER_IP');
 
-          // ❌ NO IP → open modal
-          if (!savedIP) {
-            setPendingOrder({ item, id });
-            setIpModal(true);
-            return;
-          }
+            // ❌ NO IP → open modal
+            if (!savedIP) {
+              setPendingOrder({ item, id });
+              setIpModal(true);
+              return;
+            }
 
-          // ✅ IP exists → process directly
-          await processBill(item, id);
+            // ✅ IP exists → process
+            await processBill(item, id);
+          },
         },
-      },
-    ]
-  );
-};
+      ],
+    );
+  };
 
-// =========================
-// After saving IP
-// =========================
-const handleSaveIP = async () => {
-  await saveBillPrinterIP(printerIP);
-  setIpModal(false);
+  // =========================
+  // After saving IP
+  // =========================
+  const handleSaveIP = async () => {
+    await saveBillPrinterIP(printerIP);
+    setIpModal(false);
 
-  if (pendingOrder) {
-    const { item, id } = pendingOrder;
-    setPendingOrder(null);
+    if (pendingOrder) {
+      const { item, id } = pendingOrder;
+      setPendingOrder(null);
 
-    // ✅ DIRECT CALL (NO ALERT AGAIN)
-    await processBill(item, id);
-  }
-};
+      // ✅ DIRECT CALL (NO ALERT AGAIN)
+      await processBill(item, id);
+    }
+  };
 
   const groupItems = items => {
     const map = new Map();
@@ -311,21 +307,7 @@ const handleSaveIP = async () => {
 
     return Object.values(map);
   };
-  const mergeItemsForPayload = items => {
-    const map = {};
 
-    items.forEach(i => {
-      const key = `${i.product_id}_${i.variation_id}`;
-
-      if (map[key]) {
-        map[key].qty += i.qty;
-      } else {
-        map[key] = { ...i };
-      }
-    });
-
-    return Object.values(map);
-  };
   const openEditModal = async id => {
     try {
       showLoader();
@@ -457,6 +439,69 @@ const handleSaveIP = async () => {
       hideLoader();
     }
   };
+  const renderTable = ({ item }) => {
+    const isBusy = item.status !== 'available';
+
+    return (
+      <TouchableOpacity
+        style={[
+          styles.tableCard,
+          { backgroundColor: isBusy ? '#ffe5e5' : '#e6fff2' },
+        ]}
+        onPress={() => handleMoveTable(item)}
+      >
+        {/* Table Name */}
+        <Text style={styles.tableName}>{item.name}</Text>
+
+        {/* Chairs */}
+        <Text style={styles.tableInfo}>
+          {'Orders : '}
+          {item?.orders}
+        </Text>
+
+        {/* Orders Badge */}
+        {item.orders > 0 && (
+          <View style={styles.orderBadge}>
+            <Text style={styles.badgeText}>{item.orders}</Text>
+          </View>
+        )}
+      </TouchableOpacity>
+    );
+  };
+  const handleMoveTable = table => {
+    Alert.alert('Move Table', `Move order to ${table.name}?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Yes',
+        onPress: async () => {
+          try {
+            showLoader();
+
+            const res = await ApiService.moveTable(orderId, {
+              table_id: table.id,
+            });
+
+            if (res.status) {
+              setTableModal(false);
+
+              navigation.setParams({
+                tableId: table.id,
+                tableName: table.name,
+              });
+
+              fetchOrderList();
+
+              Alert.alert('Success', 'Table moved');
+            }
+          } catch (e) {
+            Alert.alert('Error', 'Failed to move table');
+          } finally {
+            hideLoader();
+          }
+        },
+      },
+    ]);
+  };
   // =========================
   // Render Order Card
   // =========================
@@ -468,7 +513,7 @@ const handleSaveIP = async () => {
         {/* Header with Status */}
         <View style={styles.rowBetween}>
           <Text style={styles.orderTitle}>Order #{item.token_no}</Text>
-          {item.status === 'open' && (
+          {/* {item.status === 'open' && (
             <TouchableOpacity
               onPress={() => openEditModal(item.id)}
               style={{
@@ -480,7 +525,7 @@ const handleSaveIP = async () => {
             >
               <Icon name="create-outline" size={20} color={'#FFF'} />
             </TouchableOpacity>
-          )}
+          )} */}
           <Text
             style={{
               backgroundColor: getStatusColor(item.status),
@@ -524,10 +569,34 @@ const handleSaveIP = async () => {
         <Text style={styles.totalText}>Total: ₹{item.total}</Text>
 
         {/* Buttons */}
-        <View style={styles.row}>
-          {/* Add Items */}
+        {/* ================= ACTIONS ================= */}
+
+        {/* ✏️ Edit Order (Top Right / Full Row Minimal) */}
+        {item.status === 'open' && (
           <TouchableOpacity
-            style={[styles.primaryBtn, isDisabled && { opacity: 0.5 }]}
+            onPress={() => openEditModal(item.id)}
+            style={styles.editRowBtn}
+          >
+            <Icon name="create-outline" size={18} color={colors.primary} />
+            <Text style={styles.editText}>Edit Order</Text>
+          </TouchableOpacity>
+        )}
+
+        {/* 🧾 BIG BILL BUTTON */}
+        <TouchableOpacity
+          style={[styles.billBtn, isDisabled && { opacity: 0.5 }]}
+          disabled={isDisabled}
+          onPress={() => handleBill(item, item.id)}
+        >
+          <Icon name="receipt-outline" size={20} color="#fff" />
+          <Text style={styles.billText}>Generate Bill</Text>
+        </TouchableOpacity>
+
+        {/* ⚡ QUICK ACTIONS */}
+        <View style={styles.quickActionsRow}>
+          {/* ➕ Add */}
+          <TouchableOpacity
+            style={[styles.quickBtn, isDisabled && { opacity: 0.5 }]}
             disabled={isDisabled}
             onPress={() => {
               navigation.navigate('Main', {
@@ -542,28 +611,33 @@ const handleSaveIP = async () => {
               });
             }}
           >
-            <Text style={styles.btnText}>Add Items</Text>
+            <Icon name="add" size={20} color="#333" />
+            <Text style={styles.quickText}>Add Items</Text>
           </TouchableOpacity>
 
-          {/* Cancel */}
+          {/* ❌ Cancel */}
           <TouchableOpacity
-            style={[styles.cancelBtn, isDisabled && { opacity: 0.5 }]}
+            style={[styles.quickBtn, isDisabled && { opacity: 0.5 }]}
             disabled={isDisabled}
             onPress={() => {
               setOrderId(item.id);
               setCancelModalVisible(true);
             }}
           >
-            <Text style={styles.btnText}>Cancel</Text>
+            <Icon name="close" size={20} color="#ff4d4f" />
+            <Text style={styles.quickText}>Cancel</Text>
           </TouchableOpacity>
 
-          {/* Bill */}
+          {/* 🔁 Move */}
           <TouchableOpacity
-            style={[styles.primaryBtn, isDisabled && { opacity: 0.5 }]}
-            disabled={isDisabled}
-            onPress={() => handleBill(item, item.id)}
+            style={styles.quickBtn}
+            onPress={() => {
+              setOrderId(item.id);
+              setTableModal(true);
+            }}
           >
-            <Text style={styles.btnText}>Bill</Text>
+            <Icon name="swap-horizontal" size={20} color="#007bff" />
+            <Text style={styles.quickText}>Move Table</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -776,6 +850,30 @@ const handleSaveIP = async () => {
           </View>
         </View>
       </Modal>
+      <Modal visible={tableModal} transparent animationType="slide">
+        <View style={styles.bottomModalBg}>
+          {/* Click outside */}
+          <TouchableOpacity
+            style={{ flex: 1 }}
+            onPress={() => setTableModal(false)}
+          />
+
+          <View style={styles.bottomSheet}>
+            {/* Handle */}
+            <View style={styles.handle} />
+
+            <Text style={styles.modalTitle}>Select Table</Text>
+
+            <FlatList
+              data={tables}
+              keyExtractor={item => item.id.toString()}
+              numColumns={2}
+              renderItem={renderTable}
+              contentContainerStyle={{ paddingBottom: 20 }}
+            />
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -820,63 +918,12 @@ const styles = StyleSheet.create({
     color: '#222',
   },
 
-  // 🟢 Status badge
-  statusBadge: {
-    paddingHorizontal: wp('3%'),
-    paddingVertical: hp('0.5%'),
-    borderRadius: 20,
-  },
-
-  statusText: {
-    color: '#fff',
-    fontSize: wp('3%'),
-    fontFamily: fonts.medium,
-  },
-
-  // 🍽 Items
-  itemText: {
-    color: '#666',
-    fontSize: wp('3.8%'),
-    marginTop: 3,
-  },
-
   // 💰 Total
   totalText: {
     marginTop: hp('1%'),
     fontFamily: fonts.bold,
     fontSize: wp('4.2%'),
     color: '#000',
-  },
-
-  // 🔘 Buttons row
-  row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: hp('2%'),
-  },
-
-  primaryBtn: {
-    flex: 1,
-    backgroundColor: colors.primary,
-    paddingVertical: hp('1.2%'),
-    borderRadius: 8,
-    alignItems: 'center',
-    marginHorizontal: wp('1%'),
-  },
-
-  cancelBtn: {
-    flex: 0.75,
-    backgroundColor: '#999',
-    paddingVertical: hp('1.2%'),
-    borderRadius: 8,
-    alignItems: 'center',
-    marginHorizontal: wp('1%'),
-  },
-
-  btnText: {
-    color: '#fff',
-    fontSize: wp('3.5%'),
-    fontFamily: fonts.medium,
   },
 
   // 📭 Empty state
@@ -889,20 +936,6 @@ const styles = StyleSheet.create({
   emptyText: {
     color: '#aaa',
     fontSize: wp('4%'),
-  },
-
-  // ➕ Floating button
-  addBtn: {
-    position: 'absolute',
-    bottom: hp('4%'),
-    right: wp('5%'),
-    backgroundColor: colors.primary,
-    flexDirection: 'row',
-    paddingHorizontal: wp('5%'),
-    paddingVertical: hp('1.5%'),
-    borderRadius: 30,
-    alignItems: 'center',
-    elevation: 6,
   },
 
   addText: {
@@ -1053,11 +1086,6 @@ const styles = StyleSheet.create({
     color: '#333',
   },
 
-  rightBox: {
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-  },
-
   priceText: {
     fontSize: 15,
     fontFamily: fonts.bold,
@@ -1084,14 +1112,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     color: colors.primary,
-  },
-
-  saveBtn: {
-    backgroundColor: colors.primary,
-    padding: 15,
-    borderRadius: 10,
-    alignItems: 'center',
-    marginTop: 10,
   },
 
   saveText: {
@@ -1136,20 +1156,6 @@ const styles = StyleSheet.create({
     elevation: 10,
   },
 
-  title1: {
-    fontSize: 18,
-    fontFamily: fonts.semiBold,
-    marginBottom: 5,
-    color: '#222',
-  },
-
-  subtitle1: {
-    fontSize: 13,
-    color: '#666',
-    fontFamily: fonts.regular,
-    marginBottom: 15,
-  },
-
   input1: {
     borderWidth: 1,
     borderColor: '#ddd',
@@ -1165,12 +1171,6 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
 
-  cancelBtn1: {
-    paddingVertical: 10,
-    paddingHorizontal: 15,
-    marginRight: 10,
-  },
-
   cancelText: {
     color: '#777',
     fontWeight: '600',
@@ -1183,8 +1183,115 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
 
-  saveText: {
+  tableCard: {
+    flex: 1,
+    margin: wp('2%'),
+    padding: wp('4%'),
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 3,
+  },
+
+  tableName: {
+    fontSize: wp('4%'),
+    fontFamily: fonts.bold,
+    color: '#222',
+  },
+
+  tableInfo: {
+    fontSize: wp('3.2%'),
+    color: '#666',
+    marginTop: 5,
+  },
+
+  orderBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: 'red',
+    borderRadius: 12,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+
+  badgeText: {
     color: '#fff',
+    fontSize: wp('3%'),
+  },
+  /* ✏️ Edit */
+  editRowBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-end',
+    marginBottom: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#f1f3f5',
+  },
+
+  editText: {
+    marginLeft: 6,
+    color: colors.primary,
+    fontFamily: fonts.medium,
+    fontSize: 13,
+  },
+
+  /* 🧾 BILL BUTTON (PRIMARY - keep brand color) */
+  billBtn: {
+    backgroundColor: colors.primary, // ✅ your original color
+    paddingVertical: 15,
+    borderRadius: 14,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+
+    // 💎 premium shadow
+    elevation: 5,
+    shadowColor: colors.primary,
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+  },
+
+  billText: {
+    color: '#fff',
+    fontSize: 16,
+    fontFamily: fonts.bold,
+    marginLeft: 8,
+  },
+
+  /* ⚡ Quick Actions Row */
+  quickActionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 4,
+  },
+
+  /* ⚡ Base Quick Button */
+  quickBtn: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 12,
+    marginHorizontal: 5,
+    borderRadius: 12,
+
+    backgroundColor: '#fff',
+
+    // 💎 subtle card effect
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+  },
+
+  quickText: {
+    fontSize: 13,
+    marginTop: 5,
+    color: '#444',
     fontFamily: fonts.semiBold,
   },
 });

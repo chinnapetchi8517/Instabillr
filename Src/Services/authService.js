@@ -99,4 +99,12 @@ export const ApiService = {
     const response = await api.put(`/waiter-orders/${orderId}/update`, data);
     return response.data;
   },
+  getCategories:async () => {
+    const response = await api.get(`/categories`,);
+    return response.data;
+  },
+  changepassword:async(data)=>{
+    const reponse =await api.post("/change-password",data)
+    return response.data
+  }
 };

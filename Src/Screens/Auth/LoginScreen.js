@@ -99,7 +99,7 @@ await AsyncStorage.setItem(
       {/* Logo */}
 
       <Image
-        source={require('../../../assets/Images/applogo.png')}
+        source={require('../../../assets/Images/icon.png')}
         style={styles.logo}
       />
 
@@ -191,8 +191,8 @@ const styles = StyleSheet.create({
   },
 
   logo: {
-    width: wp('90%'),
-    height: hp('30%'),
+    width: wp('80%'),
+    height: hp('28%'),
     resizeMode: 'contain',
     alignSelf: 'center',
     //marginBottom:hp("2%")

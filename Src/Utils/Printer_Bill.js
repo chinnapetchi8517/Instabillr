@@ -5,7 +5,7 @@ const BILL_PRINTER_IP_KEY = "BILL_PRINTER_IP";
 const TOTAL_WIDTH = 48;
 
 // 🔥 Toggle
-const IS_MOCK = false;
+const IS_MOCK = true;
 
 // ================= IP =================
 export const saveBillPrinterIP = async (ip) => {
@@ -57,7 +57,7 @@ const wrapCenter = (text = "", maxWidth = TOTAL_WIDTH, isBold = false) => {
 };
 
 // ================= BUILD BILL =================
-const buildBill = (order, userName, location, billedData) => {
+const buildBill = (order, userName, location, billedData,tableName) => {
   let bill = "";
 
   const date = new Date();
@@ -66,7 +66,7 @@ const buildBill = (order, userName, location, billedData) => {
 console.log(location,"gst_no");
 
   // ===== HEADER =====
-  bill += "\n";
+  // bill += "\n";
 
   // 🔥 HOTEL NAME (BOLD)
   bill += wrapCenter(location?.name || "", 42, true);
@@ -88,8 +88,11 @@ console.log(location,"gst_no");
   // ===== BILL INFO =====
   bill += `Bill No : ${billedData?.invoice_no || order?.id}\n`;
   bill += leftRight(`Date : ${dateStr}`, `Time : ${timeStr}`);
-  bill += centerText(`Waiter : ${(userName || "").toUpperCase()}`);
-
+  // bill += centerText(`Waiter : ${(userName || "").toUpperCase()}`);
+bill += leftRight(
+  `Table : ${tableName|| "-"}`,
+  `Waiter : ${(userName || "").toUpperCase()}`
+);
   bill += LINE;
 
   // ===== ITEMS HEADER =====
@@ -168,7 +171,8 @@ export const printBiller = async (
   order,
   userName,
   location,
-  billedData
+  billedData,
+  tableName
 ) => {
   try {
     let ip = await getBillPrinterIP();
@@ -177,7 +181,7 @@ export const printBiller = async (
     if (!ip) throw "NO_IP_bill_printer";
     const logoUrl = billedData?.logo_url;
 
-    const bill = buildBill(order, userName, location, billedData);
+    const bill = buildBill(order, userName, location, billedData,tableName);
 
     // ✅ MOCK MODE
     if (IS_MOCK) {
@@ -185,7 +189,7 @@ export const printBiller = async (
             console.log("🖼 LOGO:", logoUrl);
  if (!logoUrl || logoUrl.includes("127.0.0.1")) {
     console.log("⚠️ LOGO WILL NOT LOAD ON DEVICE (use local IP)");
-  }
+}
       console.log("🧾 BILL PREVIEW:\n", bill);
       return;
     }
@@ -195,17 +199,19 @@ export const printBiller = async (
 
     console.log("🔌 Connecting BILL printer...");
     await NetPrinter.connectPrinter(ip, 9100);
-if (logoUrl) {
-      try {
-        await NetPrinter.printImage(logoUrl, {
-          imageWidth: 300,
-        });
+// ✅ AFTER connection only
+if (logoUrl && !logoUrl.includes("127.0.0.1")) {
+  try {
+    await NetPrinter.printImage(logoUrl, {
+      imageWidth: 260,
+    });
 
-        await NetPrinter.printText("\n");
-      } catch (e) {
-        console.log("⚠️ Logo print failed, skipping...", e);
-      }
-    }
+    await NetPrinter.printText("\n");
+  } catch (e) {
+    console.log("⚠️ Logo print failed, skipping...", e);
+  }
+}
+
     // 🔥 PRINT + AUTO CUT
     await NetPrinter.printBill(bill);
 
