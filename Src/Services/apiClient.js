@@ -2,8 +2,12 @@ import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export const api = axios.create({
- // baseURL: 'https://jkans.cnxhub.in/api',  \\live
-   baseURL: 'https://jkansfoods.sarasbillingpro.com/api',
+  //live_url
+  baseURL: 'https://jkans.cnxhub.in/api', 
+
+  //dev_url
+   //baseURL: 'https://jkansfoods.sarasbillingpro.com/api',
+
   timeout: 10000, 
   headers: {
     Accept: "application/json",
@@ -61,7 +65,7 @@ api.interceptors.response.use(
         console.log("Token expired or invalid");
 
         // Optional: auto logout
-        await AsyncStorage.removeItem("token");
+        //await AsyncStorage.removeItem("token");
 
         // Optional: navigate to login screen
         // navigation.reset({ index: 0, routes: [{ name: "Login" }] });

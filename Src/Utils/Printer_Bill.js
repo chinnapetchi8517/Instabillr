@@ -5,7 +5,7 @@ const BILL_PRINTER_IP_KEY = "BILL_PRINTER_IP";
 const TOTAL_WIDTH = 48;
 
 // 🔥 Toggle
-const IS_MOCK = true;
+const IS_MOCK = false;
 
 // ================= IP =================
 export const saveBillPrinterIP = async (ip) => {

@@ -41,6 +41,9 @@ const ItemsScreen = ({ navigation, route }) => {
   const [previewModal, setPreviewModal] = useState(false);
   const [subCategories, setSubCategories] = useState([]);
   const [selectedSubCategoryId, setSelectedSubCategoryId] = useState(null);
+  const [tableModal, setTableModal] = useState(false);
+const [tables, setTables] = useState([]);
+const [selectedTable, setSelectedTable] = useState(null);
   const fetchCategories = async () => {
     try {
       const res = await ApiService.getCategories();
@@ -56,8 +59,22 @@ const ItemsScreen = ({ navigation, route }) => {
   useEffect(() => {
     fetchProducts();
     fetchCategories();
+    fetchTables();
   }, []);
+const fetchTables = async () => {
+  try {
+    showLoader();
+    const res = await ApiService.getTables();
 
+    if (res.status) {
+      setTables(res.data);
+    }
+  } catch (e) {
+    console.log("Table error", e);
+  } finally {
+    hideLoader();
+  }
+};
   const handleSaveIP = async () => {
     try {
       showLoader();
@@ -130,15 +147,17 @@ const ItemsScreen = ({ navigation, route }) => {
     return matchSearch && matchSubCategory;
   });
 
-  const addItem = item => {
-    const exists = cart.find(i => i.id === item.id);
+ const addItem = item => {
+  const exists = cart.find(i => i.id === item.id);
 
-    if (exists) {
-      setCart(cart.map(i => (i.id === item.id ? { ...i, qty: i.qty + 1 } : i)));
-    } else {
-      setCart([...cart, { ...item, qty: 1 }]);
-    }
-  };
+  if (exists) {
+    setCart(cart.map(i =>
+      i.id === item.id ? { ...i, qty: i.qty + 1 } : i
+    ));
+  } else {
+    setCart([...cart, { ...item, qty: 1, remark: "" }]); // ✅ add remark
+  }
+};
 
   const removeItem = item => {
     const exists = cart.find(i => i.id === item.id);
@@ -153,111 +172,120 @@ const ItemsScreen = ({ navigation, route }) => {
   };
   // Called when returning from ItemsScreen
 
-  const processOrder = async () => {
-    try {
-      showLoader();
+const processOrder = async () => {
+  try {
+    showLoader();
 
-      const existingOrderId = route.params?.orderId;
+    const existingOrderId = route.params?.orderId;
+const tableId = route.params?.tableId || selectedTable?.id;
+const tableName = route.params?.tableName || selectedTable?.name;
+    const payload = {
+      table_id:tableId,
+      order_type: route.params?.orderType?.toLowerCase() || 'family',
+      items: cart.map(i => ({
+        product_id: parseInt(i.id),
+        variation_id: i.variation_id || 1,
+        qty: i.qty,
+        unit_price_inc_tax: i.price,
+        remarks: i.remark,
+      })),
+    };
 
-      const payload = {
-        table_id: route.params?.tableId,
-        order_type: route.params?.orderType?.toLowerCase() || 'family',
-        items: cart.map(i => ({
-          product_id: parseInt(i.id),
-          variation_id: i.variation_id || 1,
-          qty: i.qty,
-          unit_price_inc_tax: i.price,
-        })),
-      };
+    let response;
 
-      let response;
+    // ✅ API CALL
+    if (existingOrderId) {
+      response = await ApiService.addItemsToOrder(existingOrderId, {
+        items: payload.items,
+      });
+    } else {
+      response = await ApiService.createOrder(payload);
+    }
 
-      // ✅ API CALL
-      if (existingOrderId) {
-        response = await ApiService.addItemsToOrder(existingOrderId, {
-          items: payload.items,
-        });
-      } else {
-        response = await ApiService.createOrder(payload);
-      }
+    if (!response?.status) {
+      Alert.alert('Failed', response?.message || 'API failed');
+      return;
+    }
 
-      if (!response.status) {
-        alert(response.message || 'API failed');
-        return;
-      }
+    const data = response.data;
 
-      const data = response.data;
+    const apiCart = data.items.map(i => ({
+      id: i.product_id,
+      name: i.product_name,
+      qty: parseFloat(i.qty),
+      price: parseFloat(i.unit_price_inc_tax),
+      variation_id: i.variation_id,
+    }));
 
-      const apiCart = data.items.map(i => ({
-        id: i.product_id,
-        name: i.product_name,
-        qty: parseFloat(i.qty),
-        price: parseFloat(i.unit_price_inc_tax),
-        variation_id: i.variation_id,
-      }));
-      let itemsForKOT = [];
+    // ✅ Prepare KOT items
+ let itemsForKOT = existingOrderId
+  ? cart.map(i => ({
+      product_id: parseInt(i.id),
+      product_name: i.name,
+      qty: i.qty,
+      unit_price_inc_tax: i.price,
+      variation_id: i.variation_id || 1,
+      remarks: i.remark, // ✅ from cart
+    }))
+  : data.items.map(i => ({
+      ...i,
+      remarks: i.remarks || i.remark || "", // 🔥 FIX HERE
+    }));
 
-      if (existingOrderId) {
-        // ✅ Only newly added items
-        itemsForKOT = cart.map(i => ({
-          product_id: parseInt(i.id),
-          product_name: i.name,
-          qty: i.qty,
-          unit_price_inc_tax: i.price,
-          variation_id: i.variation_id || 1,
-        }));
-      } else {
-        // ✅ Full items for new order
-        itemsForKOT = data.items;
-      }
+    // ✅ NAVIGATE FIRST (FAST UI)
+    navigation.navigate('OrderScreen', {
+      tableId: data.table_id,
+      tableName:tableName,
+      cart: apiCart,
+      orderData: data,
+      orderType: data.order_type,
+      chairs: [data.chair_no],
+    });
 
-      // ✅ PRINT
-      await printKOT(
+    route.params?.onSelectProduct?.(apiCart);
+
+    // ✅ STOP LOADER EARLY
+    hideLoader();
+    setIsSubmitting(false);
+
+    // ✅ PRINT IN BACKGROUND (NON-BLOCKING)
+    setTimeout(() => {
+      printKOT(
         { ...data, items: itemsForKOT },
         userName,
-        route.params?.tableName,
-      );
-      // ✅ PRINT
-      //await printKOT(data, userName, route.params?.tableName);
+        tableName,
+      ).catch(err => {
+        console.log('❌ PRINT ERROR:', err);
 
-      // ✅ NAVIGATE
-      navigation.navigate('OrderScreen', {
-        tableId: data.table_id,
-        tableName: route.params?.tableName,
-        cart: apiCart,
-        orderData: data,
-        orderType: data.order_type,
-        chairs: [data.chair_no],
-      });
-
-      route.params?.onSelectProduct?.(apiCart);
-    } catch (e) {
-      console.log('❌ PROCESS ERROR:', e);
-
-      const errorText =
-        e?.message || (typeof e === 'string' ? e : JSON.stringify(e));
-
-      if (errorText.includes('failed to connect printer')) {
         Alert.alert(
           'Printer Error',
-          'Unable to connect to printer. Check WiFi.',
+          'Printing failed. Please check printer connection.',
         );
-      } else {
-        Alert.alert('Error', errorText);
-      }
-    } finally {
-      setIsSubmitting(false); // ✅ enable again AFTER process
+      });
+    }, 100);
 
-      hideLoader();
-    }
-  };
+  } catch (e) {
+    console.log('❌ PROCESS ERROR:', e);
+
+    const errorText =
+      e?.message || (typeof e === 'string' ? e : JSON.stringify(e));
+
+    Alert.alert('Error', errorText);
+
+    setIsSubmitting(false);
+    hideLoader();
+  }
+};
 
   const handleDone = async () => {
     if (cart.length === 0) {
       alert('Please add at least one item');
       return;
     }
-
+ if (!route.params?.tableId && !selectedTable) {
+    setTableModal(true); // 👈 OPEN MODAL
+    return;
+  }
     setIsSubmitting(true); // 🔥 disable button
 
     const ip = await AsyncStorage.getItem('PRINTER_IP');
@@ -305,7 +333,13 @@ const ItemsScreen = ({ navigation, route }) => {
   // =========================
   // 🧾 RENDER PRODUCT
   // =========================
-
+const updateRemark = (id, text) => {
+  setCart(prev =>
+    prev.map(item =>
+      item.id === id ? { ...item, remark: text } : item
+    )
+  );
+};
   const renderItem = ({ item }) => {
     const qty = getQty(item.id); // 🔥 get quantity from cart
 
@@ -533,16 +567,35 @@ const ItemsScreen = ({ navigation, route }) => {
 
             {/* Item List */}
             <FlatList
-              data={cart}
-              keyExtractor={item => item.id}
-              style={{ maxHeight: hp('40%') }} // ✅ prevent overflow
-              renderItem={({ item }) => (
-                <View style={styles.previewRow}>
-                  <Text style={styles.previewName}>{item.name}</Text>
-                  <Text style={styles.previewQty}>x {item.qty}</Text>
-                </View>
-              )}
-            />
+  data={cart}
+  keyExtractor={item => item.id}
+  style={{ maxHeight: hp('40%') }}
+  renderItem={({ item }) => (
+    <View style={{ marginBottom: 10 }}>
+      
+      <View style={styles.previewRow}>
+        <Text style={styles.previewName}>{item.name}</Text>
+        <Text style={styles.previewQty}>x {item.qty}</Text>
+      </View>
+
+      {/* ✅ REMARK INPUT */}
+      <TextInput
+        placeholder="Add remark (e.g. No onion)"
+        value={item.remark}
+        placeholderTextColor={'#888'}
+        onChangeText={(text) => updateRemark(item.id, text)}
+        style={{
+          borderWidth: 1,
+          borderColor: '#ddd',
+          borderRadius: 6,
+          padding: 8,
+          marginTop: 5,
+          fontSize: 12
+        }}
+      />
+    </View>
+  )}
+/>
 
             {/* Buttons */}
             {/* <View style={[styles.btnRow,{marginTop:10}]}>
@@ -557,11 +610,56 @@ const ItemsScreen = ({ navigation, route }) => {
           style={styles.saveBtn}
           onPress={confirmOrder}
         >
-          <Text style={styles.saveText}>Confirm</Text>
+          <Text style={styles.saveText}>Confirm</Text> 
         </TouchableOpacity> */}
           </View>
         </View>
       </Modal>
+      <Modal visible={tableModal} transparent animationType="slide">
+  <View style={styles.overlay}>
+    <View style={styles.modalCard}>
+      <Text style={styles.title}>Select Table</Text>
+
+      <FlatList
+        data={tables}
+        keyExtractor={(item) => item.id.toString()}
+        numColumns={2}
+        renderItem={({ item }) => (
+          <TouchableOpacity
+            style={{
+              flex: 1,
+              margin: 8,
+              padding: 16,
+              borderRadius: 10,
+              backgroundColor: '#f2f2f2',
+              alignItems: 'center',
+            }}
+            onPress={() => {
+              setSelectedTable(item);
+              setTableModal(false);
+            }}
+          >
+            <Text style={{ fontWeight: 'bold' }}>{item.name}</Text>
+          </TouchableOpacity>
+        )}
+      />
+
+      <TouchableOpacity
+        style={styles.saveBtn}
+        onPress={() => {
+          if (!selectedTable) {
+            alert("Please select table");
+            return;
+          }
+          setTableModal(false);
+          handleDone(); // 🔥 retry
+        }}
+      >
+        <Text style={styles.saveText}>Continue</Text>
+      </TouchableOpacity>
+    </View>
+  </View>
+</Modal>
     </SafeAreaView>
   );
 };

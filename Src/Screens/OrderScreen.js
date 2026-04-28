@@ -469,6 +469,10 @@ export default function OrderScreen({ route, navigation }) {
     );
   };
   const handleMoveTable = table => {
+     if (table.id === tableId) {
+    Alert.alert('Warning', 'Order is already in this table');
+    return;
+  }
     Alert.alert('Move Table', `Move order to ${table.name}?`, [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -478,7 +482,7 @@ export default function OrderScreen({ route, navigation }) {
             showLoader();
 
             const res = await ApiService.moveTable(orderId, {
-              table_id: table.id,
+              new_table_id: table.id,
             });
 
             if (res.status) {
@@ -489,7 +493,7 @@ export default function OrderScreen({ route, navigation }) {
                 tableName: table.name,
               });
 
-              fetchOrderList();
+              //fetchOrderList();
 
               Alert.alert('Success', 'Table moved');
             }

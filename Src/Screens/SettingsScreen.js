@@ -7,6 +7,7 @@ import {
   Modal,
   TextInput,
   Alert,
+  ActivityIndicator
 } from "react-native";
 import Icons from "react-native-vector-icons/MaterialCommunityIcons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -36,12 +37,13 @@ const [printerIPs, setPrinterIPs] = useState({
   bill: "",
   kot: "",
 });
-  const { showLoader, hideLoader } = useLoader();
 
+  const { showLoader, hideLoader } = useLoader();
+const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({
     current_password: "",
     new_password: "",
-    new_password_confirmation: "",
+    confirm_password: "",
   });
 
   // ================= PRINTER SELECT =================
@@ -110,28 +112,43 @@ const handleSaveIP = async () => {
     if (
       !form.current_password ||
       !form.new_password ||
-      !form.new_password_confirmation
+      !form.confirm_password
     ) {
       Alert.alert("Error", "All fields required");
       return;
     }
 
-    if (form.new_password !== form.new_password_confirmation) {
+    if (form.new_password !== form.confirm_password) {
       Alert.alert("Error", "Passwords do not match");
       return;
     }
+setLoading(true);
 
     try {
-      const res = await ApiService.changepassword(form);
+  const res = await ApiService.changepassword(form);
+  console.log(res, "res");
 
-      if (res?.status) {
-        Alert.alert("Success", "Password changed");
-        setPasswordModal(false);
-      }
-    } catch (e) {
-        console.log(e,"e---------->");
-        
-      Alert.alert("Error", "Failed");
+  if (res?.status) {
+    Alert.alert("Success", "Password changed successfully");
+     setForm({
+    current_password: "",
+    new_password: "",
+    confirm_password: "",
+  });
+    setPasswordModal(false);
+  } else {
+    Alert.alert("Failed", res?.message || "Something went wrong");
+  }
+
+} catch (e) {
+  console.log(e, "e---------->");
+
+  Alert.alert(
+    "Error",
+    e?.response?.data?.message || "Failed to change password"
+  );
+}finally {
+setLoading(false);
     }
   };
 
@@ -301,11 +318,11 @@ const handleSaveIP = async () => {
         keyboardType="number-pad"
         maxLength={6}
         style={styles.input}
-        value={form.new_password_confirmation}
+        value={form.confirm_password}
         onChangeText={(t) =>
           setForm({
             ...form,
-            new_password_confirmation: t.replace(/[^0-9]/g, ""),
+            confirm_password: t.replace(/[^0-9]/g, ""),
           })
         }
       />
@@ -324,7 +341,7 @@ const handleSaveIP = async () => {
             styles.submitBtn,
             (form.new_password.length < 6 ||
               form.current_password.length < 6 ||
-              form.new_password_confirmation.length < 6) && {
+              form.confirm_password.length < 6) && {
               opacity: 0.5,
             },
           ]}
@@ -332,10 +349,15 @@ const handleSaveIP = async () => {
           disabled={
             form.new_password.length < 6 ||
             form.current_password.length < 6 ||
-            form.new_password_confirmation.length < 6
+            form.confirm_password.length < 6
           }
         >
-          <Text style={styles.submitText}>Submit</Text>
+          {loading ? (
+    <ActivityIndicator color="#fff" />
+  ) : (
+    <Text style={styles.submitText}>Submit</Text>
+  )}
+          {/* <Text style={styles.submitText}>Submit</Text> */}
         </TouchableOpacity>
       </View>
 

@@ -104,7 +104,11 @@ export const ApiService = {
     return response.data;
   },
   changepassword:async(data)=>{
-    const reponse =await api.post("/change-password",data)
+    const response =await api.post("/change-password",data)
+    return response.data
+  },
+  moveTable:async(orderId, data)=>{
+    const response =await api.post(`/waiter-orders/${orderId}/move-table`,data)
     return response.data
   }
 };
