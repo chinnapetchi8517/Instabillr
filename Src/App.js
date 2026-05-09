@@ -7,6 +7,7 @@ import colors from './Utils/colors';
 import { LoaderProvider } from './Context/LoaderContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
+import Toast from 'react-native-toast-message';
 export default function App() {
 const [initialRoute, setInitialRoute] = React.useState(null);
   if (__DEV__) {
@@ -41,6 +42,7 @@ const [initialRoute, setInitialRoute] = React.useState(null);
     <AppNavigator initialRouteName={initialRoute} />
   )}        </NavigationContainer>
       </LoaderProvider>
+      <Toast/>
     </SafeAreaView>
   );
 }

@@ -21,6 +21,7 @@ import { useLoader } from '../Context/LoaderContext';
 import { useFocusEffect } from '@react-navigation/native'; // ✅ added
 import { printBiller, saveBillPrinterIP } from '../Utils/Printer_Bill';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Toast from 'react-native-toast-message';
 export default function OrderScreen({ route, navigation }) {
   const { tableId, tableName } = route.params;
 
@@ -176,44 +177,70 @@ export default function OrderScreen({ route, navigation }) {
     }
   };
 
-  const processBill = async (item, id) => {
-    try {
-      showLoader();
+const processBill = async (item, id) => {
+  try {
+    showLoader();
 
-      const res = await ApiService.generateBill(id);
+    // ✅ Generate bill API
+    const res = await ApiService.generateBill(id);
 
-      if (res.status) {
-        // ✅ CONDITION: Skip printer for location_id 19
-        // if (location?.location_id != 19) {
-        await printBiller(item, userName, location, res.data, tableName);
-        // } else {
-        //   console.log("🛑 Printing skipped for location 19");
-        // }
-
-        navigation.navigate('Main', {
-          screen: 'Tables',
-        });
-      } else {
-        Alert.alert('Error', res.message);
-      }
-    } catch (e) {
-      console.log('❌ PROCESS ERROR:', e);
-
-      const errorText =
-        e?.message || (typeof e === 'string' ? e : JSON.stringify(e));
-
-      if (errorText.includes('failed to connect printer')) {
-        Alert.alert(
-          'Printer Error',
-          'Unable to connect to printer. Check WiFi.',
-        );
-      } else {
-        Alert.alert('Error', errorText);
-      }
-    } finally {
-      hideLoader();
+    if (!res.status) {
+      Alert.alert('Error', res.message);
+      return;
     }
-  };
+
+    try {
+
+      // ✅ PRINT BILL
+      await printBiller(
+        item,
+        userName,
+        location,
+        res.data,
+        tableName,
+      );
+
+      // ✅ SUCCESS MESSAGE
+        Toast.show({
+  type: 'success',
+  text1: 'Bill generated and printed successfully.',
+});
+      // Alert.alert(
+      //   'Bill Printed',
+      //   'Bill generated and printed successfully.',
+      // );
+
+    } catch (printErr) {
+
+      console.log('❌ BILL PRINT ERROR:', printErr);
+
+      // ❌ PRINT FAILURE
+      Alert.alert(
+        'Printer Error',
+        'Bill generated but printer connection failed.',
+      );
+    }
+
+    // ✅ Navigate after print
+    navigation.navigate('Main', {
+      screen: 'Tables',
+    });
+
+  } catch (e) {
+
+    console.log('❌ PROCESS ERROR:', e);
+
+    const errorText =
+      e?.message || (typeof e === 'string'
+        ? e
+        : JSON.stringify(e));
+
+    Alert.alert('Error', errorText);
+
+  } finally {
+    hideLoader();
+  }
+};
   const handleBill = async (item, id) => {
     Alert.alert(
       'Generate Bill',

@@ -27,7 +27,7 @@ import Icons from 'react-native-vector-icons/Ionicons';
 import fonts from '../../Utils/fonts';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { savePrinterIP, printKOT } from '../../Utils/Printer';
-
+import Toast from 'react-native-toast-message';
 const ItemsScreen = ({ navigation, route }) => {
   const [search, setSearch] = useState('');
   const [products, setProducts] = useState([]);
@@ -249,20 +249,32 @@ const tableName = route.params?.tableName || selectedTable?.name;
     setIsSubmitting(false);
 
     // ✅ PRINT IN BACKGROUND (NON-BLOCKING)
-    setTimeout(() => {
-      printKOT(
-        { ...data, items: itemsForKOT },
-        userName,
-        tableName,
-      ).catch(err => {
-        console.log('❌ PRINT ERROR:', err);
+    setTimeout(async () => {
+  try {
 
-        Alert.alert(
-          'Printer Error',
-          'Printing failed. Please check printer connection.',
-        );
-      });
-    }, 100);
+    await printKOT(
+      { ...data, items: itemsForKOT },
+      userName,
+      tableName,
+    );
+
+    // ✅ SUCCESS MESSAGE
+   Toast.show({
+  type: 'success',
+  text1: 'Printed Successfully',
+});
+
+  } catch (err) {
+
+    console.log('❌ PRINT ERROR:', err);
+
+    // ❌ FAILURE MESSAGE
+    Alert.alert(
+      'Printer Error',
+      'Printing failed. Please check printer connection.',
+    );
+  }
+}, 100);
 
   } catch (e) {
     console.log('❌ PROCESS ERROR:', e);

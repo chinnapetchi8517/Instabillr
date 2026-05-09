@@ -15,7 +15,9 @@ export const saveBillPrinterIP = async (ip) => {
 export const getBillPrinterIP = async () => {
   return await AsyncStorage.getItem(BILL_PRINTER_IP_KEY);
 };
-
+const cleanPreview = (text) => {
+  return text.replace(/\x1B\[[0-9;]*[A-Za-z]|\x1B./g, "");
+};
 // ================= HELPERS =================
 const centerText = (text = "") => {
   const space = Math.max(0, Math.floor((TOTAL_WIDTH - text.length) / 2));
@@ -23,6 +25,11 @@ const centerText = (text = "") => {
 };
 
 const leftRight = (left = "", right = "") => {
+  const maxRight = 15; // reserve space for right
+  if (right.length > maxRight) {
+    right = right.substring(0, maxRight);
+  }
+
   const space = TOTAL_WIDTH - (left.length + right.length);
   return left + " ".repeat(space > 0 ? space : 1) + right + "\n";
 };
@@ -151,9 +158,15 @@ bill += leftRight(
   bill += LINE;
 
   // 🔥 TOTAL (BOLD)
-  bill += `${COMMANDS.TEXT_FORMAT.TXT_BOLD_ON}`;
-  bill += centerText(`TOTAL Rs. ${total.toFixed(2)}`);
-  bill += `${COMMANDS.TEXT_FORMAT.TXT_BOLD_OFF}`;
+ bill += COMMANDS.TEXT_FORMAT.TXT_ALIGN_CT;
+bill += COMMANDS.TEXT_FORMAT.TXT_BOLD_ON;
+bill += COMMANDS.TEXT_FORMAT.TXT_2HEIGHT; // height double
+bill += COMMANDS.TEXT_FORMAT.TXT_2WIDTH;  // width double
+
+bill += `TOTAL Rs. ${total.toFixed(2)}\n`;
+
+bill += COMMANDS.TEXT_FORMAT.TXT_NORMAL; // reset size
+bill += COMMANDS.TEXT_FORMAT.TXT_BOLD_OFF;
 
   bill += LINE;
 
@@ -190,7 +203,7 @@ export const printBiller = async (
  if (!logoUrl || logoUrl.includes("127.0.0.1")) {
     console.log("⚠️ LOGO WILL NOT LOAD ON DEVICE (use local IP)");
 }
-      console.log("🧾 BILL PREVIEW:\n", bill);
+      console.log("🧾 BILL PREVIEW:\n", cleanPreview(bill));
       return;
     }
 

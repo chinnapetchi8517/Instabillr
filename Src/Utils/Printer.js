@@ -5,13 +5,15 @@ const PRINTER_IP_KEY = "PRINTER_IP";
 const TOTAL_WIDTH = 48;
 
 // 🔥 Toggle this for testing
-const IS_MOCK = false;
+const IS_MOCK = true;
 const BOLD_ON = "\x1B\x45\x01";
 const BOLD_OFF = "\x1B\x45\x00";
 
 const SMALL_TEXT = "\x1B\x4D\x01"; // font B (smaller)
 const NORMAL_TEXT = "\x1B\x4D\x00";
-export const savePrinterIP = async (ip) => {
+let printQueue = [];
+let isPrinting = false;
+export const savePrinterIP =  async (ip) => {
   await AsyncStorage.setItem(PRINTER_IP_KEY, ip);
 };
 
