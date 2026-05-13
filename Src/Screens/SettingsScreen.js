@@ -1,4 +1,4 @@
-import React, { useState ,useEffect} from "react";
+import React, { useState ,useEffect, useRef} from "react";
 import {
   View,
   Text,
@@ -20,6 +20,9 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import colors from "../Utils/colors";
 import fonts from "../Utils/fonts";
+import { safeApiCall } from "../Services/safeApiCall";
+import QueueMonitorBadge from "../Components/QueueMonitorBadge";
+import requestManager from "../Utils/requestManager";
 
 // STORAGE KEYS
 const BILL_PRINTER_IP_KEY = "BILL_PRINTER_IP";
@@ -38,8 +41,9 @@ const [printerIPs, setPrinterIPs] = useState({
   kot: "",
 });
 
-  const { showLoader, hideLoader } = useLoader();
+  const { forceResetLoader } = useLoader();
 const [loading, setLoading] = useState(false);
+const isMountedRef = useRef(true);
   const [form, setForm] = useState({
     current_password: "",
     new_password: "",
@@ -66,6 +70,11 @@ const [loading, setLoading] = useState(false);
   };
 
   loadIPs();
+  return () => {
+    isMountedRef.current = false;
+    requestManager.cancelByScopePrefix("SettingsScreen");
+    forceResetLoader("SettingsScreen.unmount");
+  };
 }, []);
 const handleSaveIP = async () => {
   const key =
@@ -128,7 +137,7 @@ setLoading(true);
   const res = await ApiService.changepassword(form);
   console.log(res, "res");
 
-  if (res?.status) {
+  if (res?.status && isMountedRef.current) {
     Alert.alert("Success", "Password changed successfully");
      setForm({
     current_password: "",
@@ -148,7 +157,9 @@ setLoading(true);
     e?.response?.data?.message || "Failed to change password"
   );
 }finally {
+if (isMountedRef.current) {
 setLoading(false);
+}
     }
   };
 
@@ -166,8 +177,9 @@ setLoading(false);
   
   const confirmLogout = async () => {
     try {
-      showLoader();
-      const res = await ApiService.logout();
+      const res = await safeApiCall(({ signal }) => ApiService.logout({ signal }), {
+        source: "SettingsScreen.confirmLogout",
+      });
   
       if (res?.status) {
         navigation.reset({
@@ -179,8 +191,6 @@ setLoading(false);
       }
     } catch (error) {
       console.log(error);
-    } finally {
-      hideLoader();
     }
   };
 
@@ -196,8 +206,8 @@ setLoading(false);
   {/* 🧾 TITLE */}
   <Text style={styles.headerTitle}>Settings</Text>
 
-  {/* EMPTY RIGHT (for spacing balance) */}
-  <View style={{ width: wp("6%") }} />
+  {/* RIGHT */}
+  <QueueMonitorBadge />
 
 </View>
     <View style={styles.container}>

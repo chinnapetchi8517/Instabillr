@@ -1,12 +1,13 @@
 import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { logger } from "../Utils/logger";
 
 export const api = axios.create({
   //live_url
-  //baseURL: 'https://jkans.cnxhub.in/api', 
+  baseURL: 'https://jkans.cnxhub.in/api', 
 
   //dev_url
-   baseURL: 'https://jkansfoods.sarasbillingpro.com/api',
+   //baseURL: 'https://jkansfoods.sarasbillingpro.com/api',
 
   timeout: 10000, 
   headers: {
@@ -33,13 +34,11 @@ api.interceptors.request.use(
       }
 
       // Debug Logs
-      console.log("API Request:", config.method?.toUpperCase(), config.url);
-      console.log("Headers:", config.headers);
-      console.log("Body:", config.data);
+      logger.log("API", "request", config.method?.toUpperCase(), config.url);
 
       return config;
     } catch (err) {
-      console.log(" Request Interceptor Error:", err);
+      logger.error("API", "request interceptor error", err);
       return config;
     }
   },
@@ -49,20 +48,18 @@ api.interceptors.request.use(
 // RESPONSE INTERCEPTOR
 api.interceptors.response.use(
   (response) => {
-    console.log(" API Response:", response.config.url);
-    console.log(" Data:", response.data);
+    logger.log("API", "response", response.config.url);
     return response;
   },
   async (error) => {
     if (error.response) {
       const status = error.response.status;
 
-      console.log(" Status:", status);
-      console.log(" Data:", error.response.data);
+      logger.warn("API", "status", status, error.response.data);
 
       // Handle Unauthorized (Token Expired)
       if (status === 401) {
-        console.log("Token expired or invalid");
+        logger.warn("API", "token expired or invalid");
 
         // Optional: auto logout
         //await AsyncStorage.removeItem("token");
@@ -71,12 +68,11 @@ api.interceptors.response.use(
         // navigation.reset({ index: 0, routes: [{ name: "Login" }] });
       }
     } else if (error.request) {
-      console.log(" No response received:", error.request);
+      logger.warn("API", "no response received");
     } else {
-      console.log(" Error Message:", error.message);
+      logger.error("API", "error message", error.message);
     }
-
-    console.log(" Full Error:", error);
+    logger.error("API", "full error", error);
 
     return Promise.reject(error);
   }

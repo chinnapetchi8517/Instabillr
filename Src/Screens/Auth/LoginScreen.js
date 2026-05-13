@@ -17,10 +17,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Icon from 'react-native-vector-icons/Ionicons';
 import colors from '../../Utils/colors';
 import fonts from '../../Utils/fonts';
-import { useLoader } from '../../Context/LoaderContext';
+import { safeApiCall } from '../../Services/safeApiCall';
+import requestManager from '../../Utils/requestManager';
 export default function LoginScreen({ navigation }) {
-  const { showLoader, hideLoader } = useLoader();
-
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [remember, setRemember] = useState(false);
@@ -28,6 +27,11 @@ export default function LoginScreen({ navigation }) {
   const [emailError, setEmailError] = useState('');
   const [passwordError, setPasswordError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  React.useEffect(() => {
+    return () => {
+      requestManager.cancelByScopePrefix('LoginScreen');
+    };
+  }, []);
 
   const validate = () => {
     let valid = true;
@@ -55,15 +59,13 @@ export default function LoginScreen({ navigation }) {
     if (!validate()) return;
 
     try {
-      showLoader();
       const payload = {
         username: email, // API expects username
         password: password,
       };
-
-
-      const res = await ApiService.login(payload);
-
+      const res = await safeApiCall(({ signal }) => ApiService.login(payload, { signal }), {
+        source: 'LoginScreen.handleLogin',
+      });
 
       if (res.status) {
         //  Save token
@@ -76,13 +78,10 @@ await AsyncStorage.setItem(
   JSON.stringify(res?.permitted_locations)
 );        //  Navigate
         navigation.replace('Main');
-        hideLoader();
       } else {
         alert(res.message || 'Login failed');
-        hideLoader();
       }
     } catch (error) {
-      hideLoader();
       console.log(' Login Error:', error);
 
       const msg =

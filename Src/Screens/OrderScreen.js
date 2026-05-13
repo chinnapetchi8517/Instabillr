@@ -22,6 +22,9 @@ import { useFocusEffect } from '@react-navigation/native'; // ✅ added
 import { printBiller, saveBillPrinterIP } from '../Utils/Printer_Bill';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Toast from 'react-native-toast-message';
+import { safeApiCall } from '../Services/safeApiCall';
+import QueueMonitorBadge from '../Components/QueueMonitorBadge';
+import requestManager from '../Utils/requestManager';
 export default function OrderScreen({ route, navigation }) {
   const { tableId, tableName } = route.params;
 
@@ -31,7 +34,7 @@ export default function OrderScreen({ route, navigation }) {
   const [cancelModalVisible, setCancelModalVisible] = useState(false);
   const [cancelNotes, setCancelNotes] = useState('');
 
-  const { showLoader, hideLoader } = useLoader();
+  const { forceResetLoader } = useLoader();
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editItems, setEditItems] = useState([]);
   const [editOrderId, setEditOrderId] = useState(null);
@@ -74,13 +77,20 @@ export default function OrderScreen({ route, navigation }) {
     };
     getUser();
   }, []);
+  useEffect(() => {
+    return () => {
+      requestManager.cancelByScopePrefix('OrderScreen');
+      forceResetLoader('OrderScreen.unmount');
+    };
+  }, []);
   // =========================
   // Fetch Orders
   // =========================
   const fetchOrderList = async () => {
     try {
-      showLoader();
-      const res = await ApiService.getOrderByTable(tableId);
+      const res = await safeApiCall(({ signal }) => ApiService.getOrderByTable(tableId, { signal }), {
+        source: 'OrderScreen.fetchOrderList',
+      });
 
       if (Array.isArray(res.data)) {
         setOrderList(res.data);
@@ -88,9 +98,8 @@ export default function OrderScreen({ route, navigation }) {
         setOrderList([]);
       }
 
-      hideLoader();
     } catch (err) {
-      hideLoader();
+      setOrderList([]);
       Alert.alert('Error', 'Failed to fetch orders');
     }
   };
@@ -106,9 +115,9 @@ export default function OrderScreen({ route, navigation }) {
   };
   const fetchTables = async () => {
     try {
-      showLoader();
-
-      const res = await ApiService.getTables();
+      const res = await safeApiCall(({ signal }) => ApiService.getTables({ signal }), {
+        source: 'OrderScreen.fetchTables',
+      });
 
       if (res.status) {
         const formatted = res.data.map(item => ({
@@ -125,8 +134,6 @@ export default function OrderScreen({ route, navigation }) {
       }
     } catch (error) {
       console.log('❌ Table API Error:', error);
-    } finally {
-      hideLoader();
     }
   };
   // =========================
@@ -156,10 +163,13 @@ export default function OrderScreen({ route, navigation }) {
     }
 
     try {
-      showLoader();
-      const res = await ApiService.cancelOrder(orderId, {
-        cancel_note: cancelNotes,
-      });
+      const res = await safeApiCall(
+        ({ signal }) =>
+          ApiService.cancelOrder(orderId, {
+            cancel_note: cancelNotes,
+          }, { signal }),
+        { source: 'OrderScreen.confirmCancel' },
+      );
 
       if (res.status) {
         Alert.alert('Success', 'Order canceled');
@@ -170,76 +180,68 @@ export default function OrderScreen({ route, navigation }) {
       } else {
         Alert.alert('Error', res.message);
       }
-      hideLoader();
     } catch (err) {
       Alert.alert('Error', 'Cancel failed');
-      hideLoader();
     }
   };
 
 const processBill = async (item, id) => {
+  let billData = null;
   try {
-    showLoader();
-
-    // ✅ Generate bill API
-    const res = await ApiService.generateBill(id);
-
+    const res = await safeApiCall(({ signal }) => ApiService.generateBill(id, { signal }), {
+      source: 'OrderScreen.processBill.generateBill',
+    });
     if (!res.status) {
       Alert.alert('Error', res.message);
       return;
     }
-
-    try {
-
-      // ✅ PRINT BILL
-      await printBiller(
-        item,
-        userName,
-        location,
-        res.data,
-        tableName,
-      );
-
-      // ✅ SUCCESS MESSAGE
-        Toast.show({
-  type: 'success',
-  text1: 'Bill generated and printed successfully.',
-});
-      // Alert.alert(
-      //   'Bill Printed',
-      //   'Bill generated and printed successfully.',
-      // );
-
-    } catch (printErr) {
-
-      console.log('❌ BILL PRINT ERROR:', printErr);
-
-      // ❌ PRINT FAILURE
-      Alert.alert(
-        'Printer Error',
-        'Bill generated but printer connection failed.',
-      );
-    }
-
-    // ✅ Navigate after print
-    navigation.navigate('Main', {
-      screen: 'Tables',
-    });
-
+    billData = res.data;
   } catch (e) {
-
     console.log('❌ PROCESS ERROR:', e);
-
     const errorText =
       e?.message || (typeof e === 'string'
         ? e
         : JSON.stringify(e));
-
     Alert.alert('Error', errorText);
-
-  } finally {
-    hideLoader();
+    return;
   }
+
+  // Printing is intentionally non-blocking for UI responsiveness.
+  setTimeout(async () => {
+    try {
+      const queueResult = await printBiller(
+        item,
+        userName,
+        location,
+        billData,
+        tableName,
+      );
+
+      if (queueResult?.duplicate) {
+        Toast.show({
+          type: 'info',
+          text1: 'Bill print already queued',
+        });
+      } else {
+        Toast.show({
+          type: 'success',
+          text1: 'Bill generated',
+          text2: 'Print job added to queue.',
+        });
+      }
+    } catch (printErr) {
+      console.log('❌ BILL PRINT ERROR:', printErr);
+      Toast.show({
+        type: 'error',
+        text1: 'Bill queued failed',
+        text2: 'Printer unavailable. Saved for retry.',
+      });
+    }
+  }, 120);
+
+  navigation.navigate('Main', {
+    screen: 'Tables',
+  });
 };
   const handleBill = async (item, id) => {
     Alert.alert(
@@ -337,8 +339,9 @@ const processBill = async (item, id) => {
 
   const openEditModal = async id => {
     try {
-      showLoader();
-      const res = await ApiService.orderEdit_show(id);
+      const res = await safeApiCall(({ signal }) => ApiService.orderEdit_show(id, { signal }), {
+        source: 'OrderScreen.openEditModal',
+      });
 
       if (res.status) {
         const items = mergeItems(
@@ -366,9 +369,7 @@ const processBill = async (item, id) => {
         setEditModalVisible(true);
       }
 
-      hideLoader();
     } catch (err) {
-      hideLoader();
       Alert.alert('Error', 'Failed to load order');
     }
   };
@@ -419,8 +420,6 @@ const processBill = async (item, id) => {
         return;
       }
 
-      showLoader();
-
       // ✅ remove deleted items from original list
       const filteredItems = originalItems.filter(
         item => !deletedItems.includes(item.item_id),
@@ -448,7 +447,9 @@ const processBill = async (item, id) => {
 
       console.log('FINAL PAYLOAD 👉', payload);
 
-      const res = await ApiService.orderUpdate(editOrderId, payload);
+      const res = await safeApiCall(({ signal }) => ApiService.orderUpdate(editOrderId, payload, { signal }), {
+        source: 'OrderScreen.handleUpdateOrder',
+      });
 
       if (res.status) {
         await fetchOrderList();
@@ -462,8 +463,6 @@ const processBill = async (item, id) => {
       }
     } catch (err) {
       Alert.alert('Error', 'Update failed');
-    } finally {
-      hideLoader();
     }
   };
   const renderTable = ({ item }) => {
@@ -506,11 +505,13 @@ const processBill = async (item, id) => {
         text: 'Yes',
         onPress: async () => {
           try {
-            showLoader();
-
-            const res = await ApiService.moveTable(orderId, {
-              new_table_id: table.id,
-            });
+            const res = await safeApiCall(
+              ({ signal }) =>
+                ApiService.moveTable(orderId, {
+                  new_table_id: table.id,
+                }, { signal }),
+              { source: 'OrderScreen.handleMoveTable' },
+            );
 
             if (res.status) {
               setTableModal(false);
@@ -526,8 +527,6 @@ const processBill = async (item, id) => {
             }
           } catch (e) {
             Alert.alert('Error', 'Failed to move table');
-          } finally {
-            hideLoader();
           }
         },
       },
@@ -680,7 +679,10 @@ const processBill = async (item, id) => {
   // =========================
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>{tableName}</Text>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Text style={styles.title}>{tableName}</Text>
+        <QueueMonitorBadge />
+      </View>
 
       {orderList.length === 0 ? (
         <View style={styles.emptyBox}>

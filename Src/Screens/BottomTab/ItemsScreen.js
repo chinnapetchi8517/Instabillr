@@ -28,11 +28,14 @@ import fonts from '../../Utils/fonts';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { savePrinterIP, printKOT } from '../../Utils/Printer';
 import Toast from 'react-native-toast-message';
+import { safeApiCall } from '../../Services/safeApiCall';
+import QueueMonitorBadge from '../../Components/QueueMonitorBadge';
+import requestManager from '../../Utils/requestManager';
 const ItemsScreen = ({ navigation, route }) => {
   const [search, setSearch] = useState('');
   const [products, setProducts] = useState([]);
   const [cart, setCart] = useState([]);
-  const { showLoader, hideLoader } = useLoader();
+  const { forceResetLoader } = useLoader();
   const [ipModal, setIpModal] = useState(false);
   const [printerIP, setPrinterIP] = useState('');
   const [pendingOrder, setPendingOrder] = useState(null);
@@ -61,24 +64,28 @@ const [selectedTable, setSelectedTable] = useState(null);
     fetchCategories();
     fetchTables();
   }, []);
+
+  useEffect(() => {
+    return () => {
+      requestManager.cancelByScopePrefix('ItemsScreen');
+      forceResetLoader('ItemsScreen.unmount');
+    };
+  }, []);
 const fetchTables = async () => {
   try {
-    showLoader();
-    const res = await ApiService.getTables();
+    const res = await safeApiCall(({ signal }) => ApiService.getTables({ signal }), {
+      source: 'ItemsScreen.fetchTables',
+    });
 
     if (res.status) {
       setTables(res.data);
     }
   } catch (e) {
     console.log("Table error", e);
-  } finally {
-    hideLoader();
   }
 };
   const handleSaveIP = async () => {
     try {
-      showLoader();
-
       await savePrinterIP(printerIP);
       setIpModal(false);
 
@@ -89,16 +96,14 @@ const fetchTables = async () => {
       }
     } catch (e) {
       console.log('❌ SAVE IP ERROR', e);
-    } finally {
-      hideLoader();
     }
   };
 
   const fetchProducts = async () => {
     try {
-      showLoader();
-
-      const res = await ApiService.getProducts();
+      const res = await safeApiCall(({ signal }) => ApiService.getProducts({ signal }), {
+        source: 'ItemsScreen.fetchProducts',
+      });
 
       if (res.status) {
         const formatted = res.data.map(item => ({
@@ -112,11 +117,17 @@ const fetchTables = async () => {
         }));
 
         setProducts(formatted);
+      } else {
+        setProducts([]);
       }
-      hideLoader();
     } catch (err) {
-      hideLoader();
       console.log('❌ Product API Error', err);
+      setProducts([]);
+      Toast.show({
+        type: 'error',
+        text1: 'Failed to load products',
+        text2: 'Please check network and retry.',
+      });
     }
   };
   useEffect(() => {
@@ -174,8 +185,6 @@ const fetchTables = async () => {
 
 const processOrder = async () => {
   try {
-    showLoader();
-
     const existingOrderId = route.params?.orderId;
 const tableId = route.params?.tableId || selectedTable?.id;
 const tableName = route.params?.tableName || selectedTable?.name;
@@ -195,11 +204,17 @@ const tableName = route.params?.tableName || selectedTable?.name;
 
     // ✅ API CALL
     if (existingOrderId) {
-      response = await ApiService.addItemsToOrder(existingOrderId, {
-        items: payload.items,
-      });
+      response = await safeApiCall(
+        ({ signal }) =>
+          ApiService.addItemsToOrder(existingOrderId, {
+            items: payload.items,
+          }, { signal }),
+        { source: 'ItemsScreen.addItemsToOrder' },
+      );
     } else {
-      response = await ApiService.createOrder(payload);
+      response = await safeApiCall(({ signal }) => ApiService.createOrder(payload, { signal }), {
+        source: 'ItemsScreen.createOrder',
+      });
     }
 
     if (!response?.status) {
@@ -244,35 +259,40 @@ const tableName = route.params?.tableName || selectedTable?.name;
 
     route.params?.onSelectProduct?.(apiCart);
 
-    // ✅ STOP LOADER EARLY
-    hideLoader();
     setIsSubmitting(false);
 
     // ✅ PRINT IN BACKGROUND (NON-BLOCKING)
     setTimeout(async () => {
   try {
 
-    await printKOT(
+    const queueResult = await printKOT(
       { ...data, items: itemsForKOT },
       userName,
       tableName,
     );
 
-    // ✅ SUCCESS MESSAGE
-   Toast.show({
-  type: 'success',
-  text1: 'Printed Successfully',
-});
+    if (queueResult?.duplicate) {
+      Toast.show({
+        type: 'info',
+        text1: 'KOT already in queue',
+      });
+    } else {
+      Toast.show({
+        type: 'success',
+        text1: 'KOT accepted',
+        text2: 'Print job added to queue.',
+      });
+    }
 
   } catch (err) {
 
     console.log('❌ PRINT ERROR:', err);
 
-    // ❌ FAILURE MESSAGE
-    Alert.alert(
-      'Printer Error',
-      'Printing failed. Please check printer connection.',
-    );
+    Toast.show({
+      type: 'error',
+      text1: 'KOT queue failed',
+      text2: 'Printer unavailable. Saved for retry.',
+    });
   }
 }, 100);
 
@@ -285,7 +305,6 @@ const tableName = route.params?.tableName || selectedTable?.name;
     Alert.alert('Error', errorText);
 
     setIsSubmitting(false);
-    hideLoader();
   }
 };
 
@@ -325,8 +344,9 @@ const tableName = route.params?.tableName || selectedTable?.name;
 
   const confirmLogout = async () => {
     try {
-      showLoader();
-      const res = await ApiService.logout();
+      const res = await safeApiCall(({ signal }) => ApiService.logout({ signal }), {
+        source: 'ItemsScreen.confirmLogout',
+      });
 
       if (res?.status) {
         navigation.reset({
@@ -338,8 +358,6 @@ const tableName = route.params?.tableName || selectedTable?.name;
       }
     } catch (error) {
       console.log(error);
-    } finally {
-      hideLoader();
     }
   };
   // =========================
@@ -412,6 +430,7 @@ const updateRemark = (id, text) => {
         <Text style={styles.headerTitle}>Select Items</Text>
 
         {/* RIGHT - Logout Icon */}
+        <QueueMonitorBadge />
         <TouchableOpacity
           onPress={() =>
             navigation.navigate('SettingsScreen', { userName: userName })

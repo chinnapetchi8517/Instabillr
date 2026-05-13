@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -15,6 +15,7 @@ import {
 
 import colors from "../../Utils/colors";
 import fonts from "../../Utils/fonts";
+import QueueMonitorBadge from "../../Components/QueueMonitorBadge";
 
 export default function BillingScreen({ route, navigation }) {
   const {
@@ -55,7 +56,7 @@ export default function BillingScreen({ route, navigation }) {
     navigation.navigate("Tables");
   };
 
-  const renderItem = ({ item }) => (
+  const renderItem = useCallback(({ item }) => (
     <View style={styles.itemCard}>
       <Text style={styles.itemName}>
         {item.name} x{item.qty}
@@ -64,15 +65,18 @@ export default function BillingScreen({ route, navigation }) {
         ₹{item.price * item.qty}
       </Text>
     </View>
-  );
+  ), []);
 
   return (
     <View style={styles.container}>
       
       {/* HEADER */}
       <View style={styles.header}>
-        <Text style={styles.tableText}>Table 3</Text>
-        <Text style={styles.waiterText}>Waiter: {waiter}</Text>
+        <View>
+          <Text style={styles.tableText}>Table 3</Text>
+          <Text style={styles.waiterText}>Waiter: {waiter}</Text>
+        </View>
+        <QueueMonitorBadge />
       </View>
 
       {/* ITEMS */}

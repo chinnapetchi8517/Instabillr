@@ -22,6 +22,9 @@ import { useFocusEffect } from "@react-navigation/native";
 import colors from "../../Utils/colors";
 import fonts from "../../Utils/fonts";
      import Icons from "react-native-vector-icons/MaterialCommunityIcons";
+import { safeApiCall } from "../../Services/safeApiCall";
+import QueueMonitorBadge from "../../Components/QueueMonitorBadge";
+import requestManager from "../../Utils/requestManager";
 
 // Status Colors
 const STATUS_COLORS = {
@@ -80,8 +83,9 @@ const handleLogout = () => {
 
 const confirmLogout = async () => {
   try {
-    showLoader();
-    const res = await ApiService.logout();
+    const res = await safeApiCall(({ signal }) => ApiService.logout({ signal }), {
+      source: "TablesScreen.confirmLogout",
+    });
 
     if (res?.status) {
       navigation.reset({
@@ -93,8 +97,6 @@ const confirmLogout = async () => {
     }
   } catch (error) {
     console.log(error);
-  } finally {
-    hideLoader();
   }
 };
   // 🔁 Status toggle (demo)
@@ -135,7 +137,7 @@ const confirmLogout = async () => {
 };
   // 🎴 Table Card
 const [tables, setTables] = useState([]);
-  const { showLoader, hideLoader } = useLoader();
+  const { forceResetLoader } = useLoader();
 const [userName, setUserName] = useState("");
 
  useFocusEffect(
@@ -153,12 +155,16 @@ useEffect(() => {
     }
   };
   getUser();
+  return () => {
+    requestManager.cancelByScopePrefix("TablesScreen");
+    forceResetLoader("TablesScreen.unmount");
+  };
 }, []);
   const fetchTables = async () => {
     try {
-      showLoader();
-
-      const res = await ApiService.getTables();
+      const res = await safeApiCall(({ signal }) => ApiService.getTables({ signal }), {
+        source: "TablesScreen.fetchTables",
+      });
 
       if (res.status) {
         const formatted = res.data.map((item) => ({
@@ -175,8 +181,6 @@ useEffect(() => {
       }
     } catch (error) {
       console.log("❌ Table API Error:", error);
-    } finally {
-      hideLoader();
     }
   };
 
@@ -238,6 +242,7 @@ useEffect(() => {
 
   {/* RIGHT SECTION */}
   <View style={styles.rightSection}>
+    <QueueMonitorBadge />
     
     {/* TABLE COUNT */}
     <View style={styles.countBadge}>

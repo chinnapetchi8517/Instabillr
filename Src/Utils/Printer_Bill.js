@@ -1,23 +1,20 @@
 import { NetPrinter, COMMANDS } from "@eerengine/react-native-thermal-receipt-printer-image-qr";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import Toast from "react-native-toast-message";
+import printQueueManager from "./PrintQueueManager";
+import { saveFailedPrint } from "./FailedPrintService";
+import { withTimeout } from "./timeoutUtils";
+import { logger } from "./logger";
 
 const BILL_PRINTER_IP_KEY = "BILL_PRINTER_IP";
 const TOTAL_WIDTH = 48;
-
-// 🔥 Toggle
 const IS_MOCK = false;
 
-// ================= IP =================
-export const saveBillPrinterIP = async (ip) => {
+export const saveBillPrinterIP = async ip => {
   await AsyncStorage.setItem(BILL_PRINTER_IP_KEY, ip);
 };
 
-export const getBillPrinterIP = async () => {
-  return await AsyncStorage.getItem(BILL_PRINTER_IP_KEY);
-};
-const cleanPreview = (text) => {
-  return text.replace(/\x1B\[[0-9;]*[A-Za-z]|\x1B./g, "");
-};
+export const getBillPrinterIP = async () => AsyncStorage.getItem(BILL_PRINTER_IP_KEY);
 // ================= HELPERS =================
 const centerText = (text = "") => {
   const space = Math.max(0, Math.floor((TOTAL_WIDTH - text.length) / 2));
@@ -64,24 +61,15 @@ const wrapCenter = (text = "", maxWidth = TOTAL_WIDTH, isBold = false) => {
 };
 
 // ================= BUILD BILL =================
-const buildBill = (order, userName, location, billedData,tableName) => {
+const buildBill = (order, userName, location, billedData, tableName) => {
   let bill = "";
 
   const date = new Date();
   const dateStr = date.toLocaleDateString("en-GB");
   const timeStr = date.toLocaleTimeString();
-console.log(location,"gst_no");
-
-  // ===== HEADER =====
-  // bill += "\n";
-
-  // 🔥 HOTEL NAME (BOLD)
+  logger.printer("building bill", location?.gst_no);
   bill += wrapCenter(location?.name || "", 42, true);
-
-  // ADDRESS
   bill += wrapCenter(location?.address || "");
-
-  // OPTIONAL DETAILS
   if (location?.mobile) {
     bill += centerText(`Mobile No: ${location.mobile}`);
   }
@@ -92,17 +80,10 @@ console.log(location,"gst_no");
 
   bill += LINE;
 
-  // ===== BILL INFO =====
   bill += `Bill No : ${billedData?.invoice_no || order?.id}\n`;
   bill += leftRight(`Date : ${dateStr}`, `Time : ${timeStr}`);
-  // bill += centerText(`Waiter : ${(userName || "").toUpperCase()}`);
-bill += leftRight(
-  `Table : ${tableName|| "-"}`,
-  `Waiter : ${(userName || "").toUpperCase()}`
-);
+  bill += leftRight(`Table : ${tableName || "-"}`, `Waiter : ${(userName || "").toUpperCase()}`);
   bill += LINE;
-
-  // ===== ITEMS HEADER =====
   bill += leftRight("SNo Name", "Rate Qty Amount");
   bill += LINE;
 
@@ -127,11 +108,8 @@ bill += leftRight(
 
   bill += LINE;
 
-  // ===== TOTAL SECTION =====
   const subTotal = Number(billedData?.taxable_amount || 0);
   const total = Number(billedData?.grand_total || 0);
-
-  // ✅ GST detection (BASED ON YOUR API)
   const hasGST = billedData?.gst_applied === true;
 
   bill += `Qty : ${billedData?.items_count || order.items.length}\n`;
@@ -151,26 +129,18 @@ bill += leftRight(
       `SGST ${billedData?.sgst_percentage || 0}%`,
       sgst.toFixed(2)
     );
-  } else {
-    // bill += centerText("GST Included");
   }
 
   bill += LINE;
-
-  // 🔥 TOTAL (BOLD)
- bill += COMMANDS.TEXT_FORMAT.TXT_ALIGN_CT;
-bill += COMMANDS.TEXT_FORMAT.TXT_BOLD_ON;
-bill += COMMANDS.TEXT_FORMAT.TXT_2HEIGHT; // height double
-bill += COMMANDS.TEXT_FORMAT.TXT_2WIDTH;  // width double
-
-bill += `TOTAL Rs. ${total.toFixed(2)}\n`;
-
-bill += COMMANDS.TEXT_FORMAT.TXT_NORMAL; // reset size
-bill += COMMANDS.TEXT_FORMAT.TXT_BOLD_OFF;
+  bill += COMMANDS.TEXT_FORMAT.TXT_ALIGN_CT;
+  bill += COMMANDS.TEXT_FORMAT.TXT_BOLD_ON;
+  bill += COMMANDS.TEXT_FORMAT.TXT_2HEIGHT;
+  bill += COMMANDS.TEXT_FORMAT.TXT_2WIDTH;
+  bill += `TOTAL Rs. ${total.toFixed(2)}\n`;
+  bill += COMMANDS.TEXT_FORMAT.TXT_NORMAL;
+  bill += COMMANDS.TEXT_FORMAT.TXT_BOLD_OFF;
 
   bill += LINE;
-
-  // ===== FOOTER =====
   bill += centerText("!! THANK YOU VISIT AGAIN !!");
   bill += centerText("Powered by SaraS");
 
@@ -178,59 +148,96 @@ bill += COMMANDS.TEXT_FORMAT.TXT_BOLD_OFF;
 
   return bill;
 };
-// const LOGO_BASE64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...";
-// ================= PRINT =================
-export const printBiller = async (
-  order,
-  userName,
-  location,
-  billedData,
-  tableName
-) => {
+const safePrintBill = async (ip, logoUrl, bill) => {
+  if (IS_MOCK) {
+    logger.printer("[BILL] MOCK BILL");
+    return; 
+  }
+
+  await NetPrinter.init();
   try {
-    let ip = await getBillPrinterIP();
-    console.log("📌 BILL IP:", ip);
-
-    if (!ip) throw "NO_IP_bill_printer";
-    const logoUrl = billedData?.logo_url;
-
-    const bill = buildBill(order, userName, location, billedData,tableName);
-
-    // ✅ MOCK MODE
-    if (IS_MOCK) {
-      console.log("🧪 MOCK BILL");
-            console.log("🖼 LOGO:", logoUrl);
- if (!logoUrl || logoUrl.includes("127.0.0.1")) {
-    console.log("⚠️ LOGO WILL NOT LOAD ON DEVICE (use local IP)");
-}
-      console.log("🧾 BILL PREVIEW:\n", cleanPreview(bill));
-      return;
+    try {
+      await NetPrinter.closeConn?.();
+    } catch (closeError) {
+      logger.warn("Printer", "[BILL] close before connect warning", closeError);
     }
 
-    await NetPrinter.init();
-    await NetPrinter.closeConn?.();
-
-    console.log("🔌 Connecting BILL printer...");
-    await NetPrinter.connectPrinter(ip, 9100);
-// ✅ AFTER connection only
-if (logoUrl && !logoUrl.includes("127.0.0.1")) {
-  try {
-    await NetPrinter.printImage(logoUrl, {
-      imageWidth: 260,
-    });
-
-    await NetPrinter.printText("\n");
-  } catch (e) {
-    console.log("⚠️ Logo print failed, skipping...", e);
-  }
-}
-
-    // 🔥 PRINT + AUTO CUT
-    await NetPrinter.printBill(bill);
-
-    console.log("✅ BILL PRINT SUCCESS");
-  } catch (e) {
-    console.log("❌ BILL PRINT ERROR:", e);
-    throw e;
+    await withTimeout(
+      NetPrinter.connectPrinter(ip, 9100),
+      7000,
+      "Bill printer connect timeout"
+    );
+    if (logoUrl && !logoUrl.includes("127.0.0.1")) {
+      try {
+        await NetPrinter.printImage(logoUrl, { imageWidth: 260 });
+        await NetPrinter.printText("\n");
+      } catch (imageError) {
+        logger.warn("Printer", "[BILL] Logo print failed, continuing.", imageError);
+      }
+    }
+    await withTimeout(NetPrinter.printBill(bill), 15000, "Bill print timeout");
+  } finally {
+    try {
+      await NetPrinter.closeConn?.();
+    } catch (closeError) {
+      logger.warn("Printer", "[BILL] close after print warning", closeError);
+    }
   }
 };
+
+const onBillQueueStatus = ({ state, queueLength }) => {
+  if (state === "queued") {
+    Toast.show({
+      type: "info",
+      text1: "Bill added to queue",
+      text2: `Pending bill jobs: ${queueLength}`,
+    });
+  }
+};
+
+export const enqueueBillPrint = async ({ order, userName, location, billedData, tableName, skipDuplicateGuard = false }) => {
+  const ip = await getBillPrinterIP();
+  if (!ip) {
+    throw new Error("NO_IP_bill_printer");
+  }
+
+  const logoUrl = billedData?.logo_url;
+  const bill = buildBill(order, userName, location, billedData, tableName);
+  const uniqueKey = `BILL-${billedData?.invoice_no || order?.id}-${tableName || ""}`;
+  const dedupeKey = skipDuplicateGuard ? `${uniqueKey}-${Date.now()}` : uniqueKey;
+
+  const result = await printQueueManager.enqueue("bill", {
+    uniqueKey: dedupeKey,
+    printerIP: ip,
+    maxRetries: 1,
+    retryDelayMs: 1500,
+    execute: async attempt => {
+      console.log(`[BILL] printing invoice=${billedData?.invoice_no} attempt=${attempt} ip=${ip}`);
+      await safePrintBill(ip, logoUrl, bill);
+    },
+    onQueueStatus: status => {
+      if (status.state === "retry") {
+      logger.printer(`[BILL] retry attempt=${status.attempt + 1} key=${status.uniqueKey}`);
+      }
+      onBillQueueStatus(status);
+    },
+    onFailed: async error => {
+      logger.error("Printer", "[BILL] failed after retries", error);
+      await saveFailedPrint("bill", {
+        id: uniqueKey,
+        payload: { order, userName, location, billedData, tableName },
+        reason: error?.message || String(error),
+      });
+      Toast.show({
+        type: "error",
+        text1: "Bill print failed",
+        text2: "Saved for retry from failed prints.",
+      });
+    },
+  });
+
+  return result;
+};
+
+export const printBiller = async (order, userName, location, billedData, tableName) =>
+  enqueueBillPrint({ order, userName, location, billedData, tableName });
