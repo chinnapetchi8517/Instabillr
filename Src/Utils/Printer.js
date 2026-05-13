@@ -8,7 +8,7 @@ import { logger } from "./logger";
 
 const PRINTER_IP_KEY = "PRINTER_IP";
 const TOTAL_WIDTH = 48;
-const IS_MOCK = true;
+const IS_MOCK = false;
 const BOLD_ON = "\x1B\x45\x01";
 const BOLD_OFF = "\x1B\x45\x00";
 const SMALL_TEXT = "\x1B\x4D\x01";

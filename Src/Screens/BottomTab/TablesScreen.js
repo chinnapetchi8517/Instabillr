@@ -6,7 +6,8 @@ import {
   TouchableOpacity,
   StyleSheet,
   TextInput,
-  Alert
+  Alert,
+  DeviceEventEmitter,
 } from "react-native";
 
 import Icon from "react-native-vector-icons/Ionicons";
@@ -25,6 +26,8 @@ import fonts from "../../Utils/fonts";
 import { safeApiCall } from "../../Services/safeApiCall";
 import QueueMonitorBadge from "../../Components/QueueMonitorBadge";
 import requestManager from "../../Utils/requestManager";
+import { getTablesRaw, formatTablesForUi } from "../../Database/catalogDb";
+import { CATALOG_SYNCED_EVENT } from "../../Services/catalogSyncService";
 
 // Status Colors
 const STATUS_COLORS = {
@@ -140,11 +143,23 @@ const [tables, setTables] = useState([]);
   const { forceResetLoader } = useLoader();
 const [userName, setUserName] = useState("");
 
+  const hydrateTablesFromLocal = useCallback(() => {
+    setTables(formatTablesForUi(getTablesRaw()));
+  }, []);
+
  useFocusEffect(
   useCallback(() => {
-    fetchTables();
-  }, [])
+    hydrateTablesFromLocal();
+  }, [hydrateTablesFromLocal])
 );
+
+useEffect(() => {
+  const sub = DeviceEventEmitter.addListener(
+    CATALOG_SYNCED_EVENT,
+    hydrateTablesFromLocal,
+  );
+  return () => sub.remove();
+}, [hydrateTablesFromLocal]);
 
 useEffect(() => {
   const getUser = async () => {
@@ -160,40 +175,6 @@ useEffect(() => {
     forceResetLoader("TablesScreen.unmount");
   };
 }, []);
-  const fetchTables = async () => {
-    try {
-      const res = await safeApiCall(({ signal }) => ApiService.getTables({ signal }), {
-        source: "TablesScreen.fetchTables",
-      });
-
-      if (res.status) {
-        const formatted = res.data.map((item) => ({
-          id: item.id,
-          name: item.name,
-          status: mapStatus(item.table_status),
-          availableChairs: item.available_chairs,
-          occupiedChairs: item.occupied_chairs,
-          chairs: item.chairs,
-          orders:item?.open_orders_count // 🔥 IMPORTANT
-        }));
-
-        setTables(formatted);
-      }
-    } catch (error) {
-      console.log("❌ Table API Error:", error);
-    }
-  };
-
-  const mapStatus = (status) => {
-    switch (status) {
-      case "free":
-        return "available";
-      case "occupied":
-        return "occupied";
-      default:
-        return "Partial";
-    }
-  };
 
   // ✅ NAVIGATE TO CHAIRS SCREEN
   const handleTablePress = (table) => {

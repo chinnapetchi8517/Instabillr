@@ -23,6 +23,8 @@ import fonts from "../Utils/fonts";
 import { safeApiCall } from "../Services/safeApiCall";
 import QueueMonitorBadge from "../Components/QueueMonitorBadge";
 import requestManager from "../Utils/requestManager";
+import Toast from "react-native-toast-message";
+import { manualSyncCatalog } from "../Services/catalogSyncService";
 
 // STORAGE KEYS
 const BILL_PRINTER_IP_KEY = "BILL_PRINTER_IP";
@@ -43,6 +45,7 @@ const [printerIPs, setPrinterIPs] = useState({
 
   const { forceResetLoader } = useLoader();
 const [loading, setLoading] = useState(false);
+  const [syncBusy, setSyncBusy] = useState(false);
 const isMountedRef = useRef(true);
   const [form, setForm] = useState({
     current_password: "",
@@ -175,25 +178,122 @@ setLoading(false);
     );
   };
   
-  const confirmLogout = async () => {
+  const handleSyncData = async () => {
+    if (syncBusy) return;
+    setSyncBusy(true);
     try {
-      const res = await safeApiCall(({ signal }) => ApiService.logout({ signal }), {
-        source: "SettingsScreen.confirmLogout",
-      });
-  
-      if (res?.status) {
-        navigation.reset({
-          index: 0,
-          routes: [{ name: "Login" }],
+      const result = await manualSyncCatalog();
+      if (result?.skipped) {
+        Toast.show({
+          type: "info",
+          text1: "Sync already in progress",
+        });
+      } else if (result.ok) {
+        Toast.show({
+          type: "success",
+          text1: "Data synced successfully",
         });
       } else {
-        alert(res.message || "Logout failed");
+        Toast.show({
+          type: "error",
+          text1: "Sync failed",
+          text2: result.error?.message || "Try again later",
+        });
       }
-    } catch (error) {
-      console.log(error);
+    } catch (e) {
+      Toast.show({
+        type: "error",
+        text1: "Sync failed",
+        text2: e?.message || String(e),
+      });
+    } finally {
+      setSyncBusy(false);
     }
   };
 
+  // const confirmLogout = async () => {
+  //   try {
+  //     const res = await safeApiCall(({ signal }) => ApiService.logout({ signal }), {
+  //       source: "SettingsScreen.confirmLogout",
+  //     });
+  
+  //     if (res?.status) {
+  //       navigation.reset({
+  //         index: 0,
+  //         routes: [{ name: "Login" }],
+  //       });
+  //     } else {
+  //       alert(res.message || "Logout failed");
+  //     }
+  //   } catch (error) {
+  //     console.log(error);
+  //   }
+  // };
+const confirmLogout = async () => {
+  try {
+    setLoading(true);
+
+    // API logout
+    const res = await safeApiCall(
+      ({ signal }) => ApiService.logout({ signal }),
+      {
+        source: "SettingsScreen.confirmLogout",
+      }
+    );
+
+    // even if API fails, continue local logout
+    console.log("LOGOUT RESPONSE =>", res);
+
+    // KEEP THESE SETTINGS
+    const billPrinterIP = await AsyncStorage.getItem(BILL_PRINTER_IP_KEY);
+    const kotPrinterIP = await AsyncStorage.getItem(KOT_PRINTER_IP_KEY);
+
+    // CLEAR APP STORAGE
+    await AsyncStorage.clear();
+
+    // RESTORE PRINTER SETTINGS
+    if (billPrinterIP) {
+      await AsyncStorage.setItem(
+        BILL_PRINTER_IP_KEY,
+        billPrinterIP
+      );
+    }
+
+    if (kotPrinterIP) {
+      await AsyncStorage.setItem(
+        KOT_PRINTER_IP_KEY,
+        kotPrinterIP
+      );
+    }
+
+    // OPTIONAL:
+    // clear local DB tables
+    // await clearProductsTable();
+    // await clearTablesTable();
+    // await clearMenusTable();
+
+    // RESET REQUESTS
+    requestManager.cancelByScopePrefix("SettingsScreen");
+
+    // RESET NAVIGATION
+    navigation.reset({
+      index: 0,
+      routes: [{ name: "Login" }],
+    });
+
+  } catch (error) {
+    console.log("LOGOUT ERROR =>", error);
+
+    Alert.alert(
+      "Logout Failed",
+      "Something went wrong. Please try again."
+    );
+  } finally {
+    if (isMountedRef.current) {
+      setLoading(false);
+    }
+  }
+};
   return (
     <SafeAreaView style={{flex:1,backgroundColor:colors.primary}}>
     <View style={styles.header}>
@@ -285,6 +385,20 @@ setLoading(false);
     <Icons name="chevron-right" size={wp("5%")} color="#999" />
   </View>
 </TouchableOpacity>
+
+      <Text style={styles.sectionTitle}>Data</Text>
+
+      <TouchableOpacity
+        style={[styles.option, syncBusy && { opacity: 0.7 }]}
+        onPress={handleSyncData}
+        disabled={syncBusy}
+      >
+        <Icons name="cloud-sync-outline" size={wp("6%")} />
+        <Text style={styles.optionText}>Sync Data</Text>
+        {syncBusy ? (
+          <ActivityIndicator style={{ marginLeft: wp("2%") }} color={colors.primary} />
+        ) : null}
+      </TouchableOpacity>
 
       <TouchableOpacity style={styles.option} onPress={handleLogout}>
         <Icons name="logout" size={wp("6%")} color="red" />

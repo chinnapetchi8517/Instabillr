@@ -5,7 +5,8 @@ import {
   StyleSheet,
   FlatList,
   TouchableOpacity,
-  Alert
+  Alert,
+  DeviceEventEmitter,
 } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker"; // or your date picker
 import CustomDropdown from "../../Components/Dropdown";
@@ -25,6 +26,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { safeApiCall } from "../../Services/safeApiCall";
 import QueueMonitorBadge from "../../Components/QueueMonitorBadge";
 import requestManager from "../../Utils/requestManager";
+import { getTablesRaw } from "../../Database/catalogDb";
+import { CATALOG_SYNCED_EVENT } from "../../Services/catalogSyncService";
 
 export default function ReportsScreen({navigation}) {
     const [tables, setTables] = useState([]);
@@ -53,28 +56,13 @@ const onChangeDate = (event, date) => {
   setShowDatePicker(false); // hide picker
   if (date) setSelectedDate(date); // update selected date
 };
-  // Fetch table list
-  const fetchTables = async () => {
-    try {
-      setLoading(true);
-      const res = await safeApiCall(({ signal }) => ApiService.getTables({ signal }), {
-        source: "ReportScreen.fetchTables",
-      });
-      if (res.status) {
-        const formatted = res.data.map((item) => ({
-          id: item.id,
-          name: item.name,
-        }));
-        if (isMountedRef.current) {
-          setTables(formatted);
-        }
-      }
-    } catch (error) {
-      // console.log("❌ Table API Error:", error);
-    } finally {
-      if (isMountedRef.current) {
-        setLoading(false);
-      }
+  const loadTablesFromLocal = () => {
+    const raw = getTablesRaw();
+    const formatted = Array.isArray(raw)
+      ? raw.map((item) => ({ id: item.id, name: item.name }))
+      : [];
+    if (isMountedRef.current) {
+      setTables(formatted);
     }
   };
 
@@ -147,10 +135,15 @@ const fetchReport = async () => {
 };
   useEffect(() => {
     isMountedRef.current = true;
-    fetchTables();
+    loadTablesFromLocal();
     fetchReport(); // show today's report on load
+    const sub = DeviceEventEmitter.addListener(
+      CATALOG_SYNCED_EVENT,
+      loadTablesFromLocal,
+    );
     return () => {
       isMountedRef.current = false;
+      sub.remove();
       requestManager.cancelByScopePrefix("ReportScreen");
       forceResetLoader("ReportScreen.unmount");
     };

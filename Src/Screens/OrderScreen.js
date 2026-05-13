@@ -8,6 +8,7 @@ import {
   StyleSheet,
   Modal,
   TextInput,
+  DeviceEventEmitter,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import colors from '../Utils/colors';
@@ -25,6 +26,8 @@ import Toast from 'react-native-toast-message';
 import { safeApiCall } from '../Services/safeApiCall';
 import QueueMonitorBadge from '../Components/QueueMonitorBadge';
 import requestManager from '../Utils/requestManager';
+import { getTablesRaw, formatTablesForUi } from '../Database/catalogDb';
+import { CATALOG_SYNCED_EVENT } from '../Services/catalogSyncService';
 export default function OrderScreen({ route, navigation }) {
   const { tableId, tableName } = route.params;
 
@@ -55,12 +58,24 @@ export default function OrderScreen({ route, navigation }) {
   // =========================
   // 🔄 Auto Refresh on Focus
   // =========================
+  const hydrateTablesFromLocal = useCallback(() => {
+    setTables(formatTablesForUi(getTablesRaw()));
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       fetchOrderList();
-      fetchTables();
-    }, []),
+      hydrateTablesFromLocal();
+    }, [hydrateTablesFromLocal]),
   );
+
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(
+      CATALOG_SYNCED_EVENT,
+      hydrateTablesFromLocal,
+    );
+    return () => sub.remove();
+  }, [hydrateTablesFromLocal]);
   useEffect(() => {
     const getUser = async () => {
       const userData = await AsyncStorage.getItem('user');
@@ -101,39 +116,6 @@ export default function OrderScreen({ route, navigation }) {
     } catch (err) {
       setOrderList([]);
       Alert.alert('Error', 'Failed to fetch orders');
-    }
-  };
-  const mapStatus = status => {
-    switch (status) {
-      case 'free':
-        return 'available';
-      case 'occupied':
-        return 'occupied';
-      default:
-        return 'Partial';
-    }
-  };
-  const fetchTables = async () => {
-    try {
-      const res = await safeApiCall(({ signal }) => ApiService.getTables({ signal }), {
-        source: 'OrderScreen.fetchTables',
-      });
-
-      if (res.status) {
-        const formatted = res.data.map(item => ({
-          id: item.id,
-          name: item.name,
-          status: mapStatus(item.table_status),
-          availableChairs: item.available_chairs,
-          occupiedChairs: item.occupied_chairs,
-          chairs: item.chairs,
-          orders: item?.open_orders_count, // 🔥 IMPORTANT
-        }));
-
-        setTables(formatted);
-      }
-    } catch (error) {
-      console.log('❌ Table API Error:', error);
     }
   };
   // =========================

@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import AppNavigator from './Navigation/AppNavigator';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { AppState, StatusBar } from 'react-native';
+import { AppState, StatusBar, InteractionManager } from 'react-native';
 import colors from './Utils/colors';
 import { getLoaderController, LoaderProvider } from './Context/LoaderContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -10,6 +10,8 @@ import Toast from 'react-native-toast-message';
 import { retryAllFailedPrints } from './Services/PrintRecoveryService';
 import { startNetworkMonitoring } from './Services/networkService';
 import requestManager from './Utils/requestManager';
+import { scheduleBackgroundCatalogSync } from './Services/catalogSyncService';
+
 export default function App() {
 const [initialRoute, setInitialRoute] = React.useState(null);
   if (__DEV__) {
@@ -57,6 +59,14 @@ const [initialRoute, setInitialRoute] = React.useState(null);
     appStateSub?.remove?.();
   };
 }, []);
+
+  useEffect(() => {
+    if (initialRoute !== 'Main') return;
+    const task = InteractionManager.runAfterInteractions(() => {
+      scheduleBackgroundCatalogSync(0);
+    });
+    return () => task?.cancel?.();
+  }, [initialRoute]);
 
   return (
     <SafeAreaView style={{ flex: 1 }}>

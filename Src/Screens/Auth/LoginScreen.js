@@ -19,6 +19,7 @@ import colors from '../../Utils/colors';
 import fonts from '../../Utils/fonts';
 import { safeApiCall } from '../../Services/safeApiCall';
 import requestManager from '../../Utils/requestManager';
+import { manualSyncCatalog } from '../../Services/catalogSyncService';
 export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -55,43 +56,199 @@ export default function LoginScreen({ navigation }) {
 
     return valid;
   };
-  const handleLogin = async () => {
-    if (!validate()) return;
+ const handleLogin = async () => {
+  if (!validate()) return;
 
-    try {
-      const payload = {
-        username: email, // API expects username
-        password: password,
-      };
-      const res = await safeApiCall(({ signal }) => ApiService.login(payload, { signal }), {
-        source: 'LoginScreen.handleLogin',
-      });
+  try {
+    const payload = {
+      username: email,
+      password: password,
+    };
 
-      if (res.status) {
-        //  Save token
-        await AsyncStorage.setItem('token', res.token);
-
-        //  Optional: Save user data
-        await AsyncStorage.setItem('user', JSON.stringify(res.user));
-await AsyncStorage.setItem(
-  'address',
-  JSON.stringify(res?.permitted_locations)
-);        //  Navigate
-        navigation.replace('Main');
-      } else {
-        alert(res.message || 'Login failed');
+    const res = await safeApiCall(
+      ({ signal }) => ApiService.login(payload, { signal }),
+      {
+        source: "LoginScreen.handleLogin",
       }
-    } catch (error) {
-      console.log(' Login Error:', error);
+    );
 
-      const msg =
-        error?.response?.data?.message ||
-        error?.message ||
-        'Something went wrong';
+    console.log("LOGIN RESPONSE =>", res);
 
-      alert(msg);
+    if (res?.status) {
+
+      // =========================
+      // GET OLD BRANCH ID
+      // =========================
+      const oldBranchId =
+        await AsyncStorage.getItem("branch_id");
+
+      // =========================
+      // GET NEW BRANCH ID
+      // =========================
+      const newBranchId = String(
+        res?.permitted_locations?.[0]?.location_id || ""
+      );
+
+      // =========================
+      // CHECK BRANCH CHANGED
+      // =========================
+      const isDifferentBranch =
+        oldBranchId &&
+        oldBranchId !== newBranchId;
+
+      // =========================
+      // SAVE PRINTER SETTINGS
+      // =========================
+      const billPrinterIP =
+        await AsyncStorage.getItem("BILL_PRINTER_IP");
+
+      const kotPrinterIP =
+        await AsyncStorage.getItem("PRINTER_IP");
+
+      // =========================
+      // CLEAR SESSION STORAGE
+      // =========================
+      await AsyncStorage.clear();
+
+      // =========================
+      // RESTORE PRINTER SETTINGS
+      // =========================
+      if (billPrinterIP) {
+        await AsyncStorage.setItem(
+          "BILL_PRINTER_IP",
+          billPrinterIP
+        );
+      }
+
+      if (kotPrinterIP) {
+        await AsyncStorage.setItem(
+          "PRINTER_IP",
+          kotPrinterIP
+        );
+      }
+
+      // =========================
+      // SAVE LOGIN DATA
+      // =========================
+      await AsyncStorage.setItem(
+        "token",
+        res.token
+      );
+
+      await AsyncStorage.setItem(
+        "user",
+        JSON.stringify(res.user)
+      );
+
+      await AsyncStorage.setItem(
+        "address",
+        JSON.stringify(
+          res?.permitted_locations || []
+        )
+      );
+
+      await AsyncStorage.setItem(
+        "branch_id",
+        newBranchId
+      );
+
+      // =========================
+      // CLEAR OLD BRANCH CACHE
+      // =========================
+      if (isDifferentBranch) {
+
+        console.log(
+          "NEW BRANCH LOGIN => CLEAR OLD CACHE"
+        );
+
+        // CLEAR LOCAL DB TABLES
+        await clearProductsTable();
+        await clearTablesTable();
+        await clearMenusTable();
+      }
+
+      // =========================
+      // FETCH NEW DATA BEFORE OPEN
+      // =========================
+      try {
+
+        // IMPORTANT:
+        // wait sync before opening app
+        await manualSyncCatalog();
+
+      } catch (syncError) {
+
+        console.log(
+          "SYNC ERROR =>",
+          syncError
+        );
+      }
+
+      // =========================
+      // OPEN APP
+      // =========================
+      navigation.replace("Main");
+
+    } else {
+
+      alert(
+        res?.message || "Login failed"
+      );
     }
-  };
+
+  } catch (error) {
+
+    console.log(
+      "LOGIN ERROR =>",
+      error
+    );
+
+    const msg =
+      error?.response?.data?.message ||
+      error?.message ||
+      "Something went wrong";
+
+    alert(msg);
+  }
+};
+//   const handleLogin = async () => {
+//     if (!validate()) return;
+
+//     try {
+//       const payload = {
+//         username: email, // API expects username
+//         password: password,
+//       };
+//       const res = await safeApiCall(({ signal }) => ApiService.login(payload, { signal }), {
+//         source: 'LoginScreen.handleLogin',
+//       });
+
+//       if (res.status) {
+//         //  Save token
+//         await AsyncStorage.setItem('token', res.token);
+
+//         //  Optional: Save user data
+//         await AsyncStorage.setItem('user', JSON.stringify(res.user));
+// await AsyncStorage.setItem(
+//   'address',
+//   JSON.stringify(res?.permitted_locations)
+// );        //  Navigate
+//         navigation.replace('Main');
+//         scheduleBackgroundCatalogSync();
+//       } else {
+//         alert(res.message || 'Login failed');
+//       }
+//     } catch (error) {
+//       console.log(' Login Error:', error);
+
+//       const msg =
+//         error?.response?.data?.message ||
+//         error?.message ||
+//         'Something went wrong';
+
+//       alert(msg);
+//     }
+//   };
 
   return (
     <View style={styles.container}>

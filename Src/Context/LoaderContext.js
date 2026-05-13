@@ -156,7 +156,7 @@ export const LoaderProvider = ({ children }) => {
 
       {showOverlay && (
         <View style={styles.overlay} pointerEvents="none">
-          {/* <ActivityIndicator size="large" color={colors.primary} /> */}
+          <ActivityIndicator size="large" color={colors.primary} />
         </View>
       )}
     </LoaderContext.Provider>

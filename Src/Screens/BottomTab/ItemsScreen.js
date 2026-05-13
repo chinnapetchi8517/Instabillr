@@ -10,6 +10,7 @@ import {
   StatusBar,
   Alert,
   Modal,
+  DeviceEventEmitter,
 } from 'react-native';
 
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -31,6 +32,15 @@ import Toast from 'react-native-toast-message';
 import { safeApiCall } from '../../Services/safeApiCall';
 import QueueMonitorBadge from '../../Components/QueueMonitorBadge';
 import requestManager from '../../Utils/requestManager';
+import {
+  getProductsRaw,
+  getMenusRaw,
+  getTablesRaw,
+  formatProductsForUi,
+  formatTablesForUi,
+  getSubCategoriesFromMenus,
+} from '../../Database/catalogDb';
+import { CATALOG_SYNCED_EVENT } from '../../Services/catalogSyncService';
 const ItemsScreen = ({ navigation, route }) => {
   const [search, setSearch] = useState('');
   const [products, setProducts] = useState([]);
@@ -47,22 +57,22 @@ const ItemsScreen = ({ navigation, route }) => {
   const [tableModal, setTableModal] = useState(false);
 const [tables, setTables] = useState([]);
 const [selectedTable, setSelectedTable] = useState(null);
-  const fetchCategories = async () => {
-    try {
-      const res = await ApiService.getCategories();
 
-      if (res.status) {
-        setSubCategories(res.data.sub_categories); // ✅ ONLY THIS
-      }
-    } catch (err) {
-      console.log('❌ Category API Error', err);
-    }
+  const hydrateCatalogFromLocal = () => {
+    const rawProducts = getProductsRaw();
+    setProducts(formatProductsForUi(rawProducts));
+    const menus = getMenusRaw();
+    setSubCategories(getSubCategoriesFromMenus(menus));
+    setTables(formatTablesForUi(getTablesRaw()));
   };
 
   useEffect(() => {
-    fetchProducts();
-    fetchCategories();
-    fetchTables();
+    hydrateCatalogFromLocal();
+    const sub = DeviceEventEmitter.addListener(
+      CATALOG_SYNCED_EVENT,
+      hydrateCatalogFromLocal,
+    );
+    return () => sub.remove();
   }, []);
 
   useEffect(() => {
@@ -71,19 +81,6 @@ const [selectedTable, setSelectedTable] = useState(null);
       forceResetLoader('ItemsScreen.unmount');
     };
   }, []);
-const fetchTables = async () => {
-  try {
-    const res = await safeApiCall(({ signal }) => ApiService.getTables({ signal }), {
-      source: 'ItemsScreen.fetchTables',
-    });
-
-    if (res.status) {
-      setTables(res.data);
-    }
-  } catch (e) {
-    console.log("Table error", e);
-  }
-};
   const handleSaveIP = async () => {
     try {
       await savePrinterIP(printerIP);
@@ -99,37 +96,6 @@ const fetchTables = async () => {
     }
   };
 
-  const fetchProducts = async () => {
-    try {
-      const res = await safeApiCall(({ signal }) => ApiService.getProducts({ signal }), {
-        source: 'ItemsScreen.fetchProducts',
-      });
-
-      if (res.status) {
-        const formatted = res.data.map(item => ({
-          id: item.product_id.toString(),
-          name: item.product_name,
-          price: parseFloat(item.unit_price_inc_tax),
-          sku: item.sku_no, // ✅ add this
-          sub_category_id: item.sub_category_id, // ✅ FIXED
-
-          // category: "Non-Veg", // 🔥 TEMP (update when API gives category)
-        }));
-
-        setProducts(formatted);
-      } else {
-        setProducts([]);
-      }
-    } catch (err) {
-      console.log('❌ Product API Error', err);
-      setProducts([]);
-      Toast.show({
-        type: 'error',
-        text1: 'Failed to load products',
-        text2: 'Please check network and retry.',
-      });
-    }
-  };
   useEffect(() => {
     const getUser = async () => {
       const userData = await AsyncStorage.getItem('user');
