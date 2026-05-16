@@ -25,7 +25,9 @@ const notify = nextOnline => {
 
 export const startNetworkMonitoring = onReconnect => {
   return NetInfo.addEventListener(state => {
-    const nextOnline = Boolean(state.isConnected && state.isInternetReachable !== false);
+    // Many devices report isInternetReachable=false while Wi‑Fi/LAN API calls still work.
+    // Rely on physical connection; let individual requests fail if there is no route.
+    const nextOnline = Boolean(state.isConnected);
     if (nextOnline === isOnline) {
       return;
     }

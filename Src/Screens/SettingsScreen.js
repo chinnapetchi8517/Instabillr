@@ -22,7 +22,7 @@ import colors from "../Utils/colors";
 import fonts from "../Utils/fonts";
 import { safeApiCall } from "../Services/safeApiCall";
 import QueueMonitorBadge from "../Components/QueueMonitorBadge";
-import requestManager from "../Utils/requestManager";
+// import requestManager from "../Utils/requestManager";
 import Toast from "react-native-toast-message";
 import { manualSyncCatalog } from "../Services/catalogSyncService";
 
@@ -31,7 +31,10 @@ const BILL_PRINTER_IP_KEY = "BILL_PRINTER_IP";
 const KOT_PRINTER_IP_KEY = "PRINTER_IP";
 
 export default function SettingsScreen({ navigation, route }) {
-  const { userName } = route.params || {};
+  const routeUserName = route?.params?.userName;
+  const [displayUserName, setDisplayUserName] = useState(
+    routeUserName ? String(routeUserName) : "",
+  );
 
   const [passwordModal, setPasswordModal] = useState(false);
   const [ipModal, setIpModal] = useState(false);
@@ -62,23 +65,46 @@ const isMountedRef = useRef(true);
     ]);
   };
   useEffect(() => {
-  const loadIPs = async () => {
-    const bill = await AsyncStorage.getItem(BILL_PRINTER_IP_KEY);
-    const kot = await AsyncStorage.getItem(KOT_PRINTER_IP_KEY);
+    let cancelled = false;
+    const loadUserLabel = async () => {
+      if (routeUserName) {
+        if (!cancelled) setDisplayUserName(String(routeUserName));
+        return;
+      }
+      try {
+        const raw = await AsyncStorage.getItem("user");
+        if (!raw || cancelled) return;
+        const u = JSON.parse(raw);
+        const label = (u.username || u.name || u.email || u.mobile || "").trim();
+        if (!cancelled) setDisplayUserName(label);
+      } catch {
+        if (!cancelled) setDisplayUserName("");
+      }
+    };
+    loadUserLabel();
+    return () => {
+      cancelled = true;
+    };
+  }, [routeUserName]);
 
-    setPrinterIPs({
-      bill: bill || "",
-      kot: kot || "",
-    });
-  };
+  useEffect(() => {
+    const loadIPs = async () => {
+      const bill = await AsyncStorage.getItem(BILL_PRINTER_IP_KEY);
+      const kot = await AsyncStorage.getItem(KOT_PRINTER_IP_KEY);
 
-  loadIPs();
-  return () => {
-    isMountedRef.current = false;
-    requestManager.cancelByScopePrefix("SettingsScreen");
-    forceResetLoader("SettingsScreen.unmount");
-  };
-}, []);
+      setPrinterIPs({
+        bill: bill || "",
+        kot: kot || "",
+      });
+    };
+
+    loadIPs();
+    return () => {
+      isMountedRef.current = false;
+      // requestManager.cancelByScopePrefix("SettingsScreen");
+      forceResetLoader("SettingsScreen.unmount");
+    };
+  }, []);
 const handleSaveIP = async () => {
   const key =
     selectedPrinter === "bill"
@@ -213,7 +239,7 @@ setLoading(false);
 
   // const confirmLogout = async () => {
   //   try {
-  //     const res = await safeApiCall(({ signal }) => ApiService.logout({ signal }), {
+  //     const res = await safeApiCall(({ signal }={}) => ApiService.logout({ signal }), {
   //       source: "SettingsScreen.confirmLogout",
   //     });
   
@@ -235,7 +261,7 @@ const confirmLogout = async () => {
 
     // API logout
     const res = await safeApiCall(
-      ({ signal }) => ApiService.logout({ signal }),
+      ({ signal }={}) => ApiService.logout({ signal }),
       {
         source: "SettingsScreen.confirmLogout",
       }
@@ -273,7 +299,7 @@ const confirmLogout = async () => {
     // await clearMenusTable();
 
     // RESET REQUESTS
-    requestManager.cancelByScopePrefix("SettingsScreen");
+    // requestManager.cancelByScopePrefix("SettingsScreen");
 
     // RESET NAVIGATION
     navigation.reset({
@@ -313,7 +339,7 @@ const confirmLogout = async () => {
     <View style={styles.container}>
       
       {/* USER NAME */}
-      <Text style={styles.userName}>{userName}</Text>
+      <Text style={styles.userName}>{displayUserName || "—"}</Text>
 
       {/* OPTIONS */}
       <TouchableOpacity
@@ -394,7 +420,7 @@ const confirmLogout = async () => {
         disabled={syncBusy}
       >
         <Icons name="cloud-sync-outline" size={wp("6%")} />
-        <Text style={styles.optionText}>Sync Data</Text>
+        <Text style={styles.optionText}>Sync Tables & Menu Items</Text>
         {syncBusy ? (
           <ActivityIndicator style={{ marginLeft: wp("2%") }} color={colors.primary} />
         ) : null}

@@ -2,21 +2,39 @@ import React, { useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import AppNavigator from './Navigation/AppNavigator';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { AppState, StatusBar, InteractionManager } from 'react-native';
+import { AppState, StatusBar, InteractionManager, Platform } from 'react-native';
 import colors from './Utils/colors';
 import { getLoaderController, LoaderProvider } from './Context/LoaderContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Toast from 'react-native-toast-message';
+import { appToastConfig } from './Utils/toastConfig';
 import { retryAllFailedPrints } from './Services/PrintRecoveryService';
 import { startNetworkMonitoring } from './Services/networkService';
-import requestManager from './Utils/requestManager';
+// import requestManager from './Utils/requestManager';
 import { scheduleBackgroundCatalogSync } from './Services/catalogSyncService';
+import { NetPrinter } from "@eerengine/react-native-thermal-receipt-printer-image-qr";
 
+let initialized = false;
+
+export const initializePrinter = async () => {
+  if (initialized) return;
+
+  await NetPrinter.init();
+
+  initialized = true;
+};
 export default function App() {
 const [initialRoute, setInitialRoute] = React.useState(null);
   if (__DEV__) {
   console.log("Debug log");
 }
+// printerBootstrap.js
+
+
+
+useEffect(() => {
+  initializePrinter();
+}, []);
  useEffect(() => {
   const checkLogin = async () => {
     try {
@@ -50,7 +68,7 @@ const [initialRoute, setInitialRoute] = React.useState(null);
       loader?.forceResetLoader('app-resume');
       retryAllFailedPrints({ showToast: false }).catch(() => {});
     } else if (nextState === 'background') {
-      requestManager.cancelAll('app-background');
+      // requestManager.cancelAll('app-background');
     }
   });
 
@@ -77,7 +95,12 @@ const [initialRoute, setInitialRoute] = React.useState(null);
     <AppNavigator initialRouteName={initialRoute} />
   )}        </NavigationContainer>
       </LoaderProvider>
-      <Toast/>
+      <Toast
+        config={appToastConfig}
+        position="bottom"
+        bottomOffset={Platform.OS === 'ios' ? 42 : 28}
+        visibilityTime={4000}
+      />
     </SafeAreaView>
   );
 }

@@ -18,7 +18,7 @@ import Icon from 'react-native-vector-icons/Ionicons';
 import colors from '../../Utils/colors';
 import fonts from '../../Utils/fonts';
 import { safeApiCall } from '../../Services/safeApiCall';
-import requestManager from '../../Utils/requestManager';
+// import requestManager from '../../Utils/requestManager';
 import { manualSyncCatalog } from '../../Services/catalogSyncService';
 export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState('');
@@ -30,7 +30,7 @@ export default function LoginScreen({ navigation }) {
   const [showPassword, setShowPassword] = useState(false);
   React.useEffect(() => {
     return () => {
-      requestManager.cancelByScopePrefix('LoginScreen');
+      // requestManager.cancelByScopePrefix('LoginScreen');
     };
   }, []);
 
@@ -66,7 +66,7 @@ export default function LoginScreen({ navigation }) {
     };
 
     const res = await safeApiCall(
-      ({ signal }) => ApiService.login(payload, { signal }),
+      ({ signal }={}) => ApiService.login(payload, { signal }),
       {
         source: "LoginScreen.handleLogin",
       }
@@ -219,7 +219,7 @@ export default function LoginScreen({ navigation }) {
 //         username: email, // API expects username
 //         password: password,
 //       };
-//       const res = await safeApiCall(({ signal }) => ApiService.login(payload, { signal }), {
+//       const res = await safeApiCall(({ signal }={}) => ApiService.login(payload, { signal }), {
 //         source: 'LoginScreen.handleLogin',
 //       });
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback,useRef } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,12 @@ import {
   Modal,
   TextInput,
   DeviceEventEmitter,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  useWindowDimensions,
+  Keyboard,
+  BackHandler 
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import colors from '../Utils/colors';
@@ -26,10 +32,36 @@ import Toast from 'react-native-toast-message';
 import { safeApiCall } from '../Services/safeApiCall';
 import QueueMonitorBadge from '../Components/QueueMonitorBadge';
 import requestManager from '../Utils/requestManager';
+import { logger } from '../Utils/logger';
 import { getTablesRaw, formatTablesForUi } from '../Database/catalogDb';
-import { CATALOG_SYNCED_EVENT } from '../Services/catalogSyncService';
+import {
+  CATALOG_SYNCED_EVENT,
+  refreshTablesCacheFromNetwork,
+} from '../Services/catalogSyncService';
+/** API may return { data: [...] }, { data: { orders } } }, or a bare array from some layers */
+const normalizeOrderListResponse = res => {
+  if (!res) return [];
+  if (Array.isArray(res)) return res;
+  if (Array.isArray(res.data)) return res.data;
+  if (Array.isArray(res.orders)) return res.orders;
+  if (res.data && Array.isArray(res.data.orders)) return res.data.orders;
+  return [];
+};
+
+const isAbortLikeError = err => {
+  if (!err) return false;
+  if (err.name === "CanceledError" || err.name === "AbortError") return true;
+  if (err.code === "ERR_CANCELED") return true;
+  const msg = String(err.message || "");
+  return /canceled|cancelled|aborted/i.test(msg);
+};
+
 export default function OrderScreen({ route, navigation }) {
+      // const { showLoader, hideLoader } = useLoader();
+
   const { tableId, tableName } = route.params;
+  const { width: windowWidth } = useWindowDimensions();
+  const cancelModalMaxWidth = Math.min(480, windowWidth - 32);
 
   const [orderList, setOrderList] = useState([]);
   const [orderId, setOrderId] = useState(null);
@@ -50,6 +82,7 @@ export default function OrderScreen({ route, navigation }) {
   const [pendingOrder, setPendingOrder] = useState(null);
   const [tableModal, setTableModal] = useState(false);
   const [tables, setTables] = useState([]);
+const [refreshing, setRefreshing] = useState(false);
   const [editMeta, setEditMeta] = useState({
     table_id: null,
     chair_no: null,
@@ -61,27 +94,169 @@ export default function OrderScreen({ route, navigation }) {
   const hydrateTablesFromLocal = useCallback(() => {
     setTables(formatTablesForUi(getTablesRaw()));
   }, []);
+useFocusEffect(
+  React.useCallback(() => {
+    const onBackPress = () => {
+      navigation.navigate('Main', {
+          screen: 'Tables',
+        })
 
-  useFocusEffect(
-    useCallback(() => {
-      fetchOrderList();
+      return true;
+    };
+
+    const subscription = BackHandler.addEventListener(
+      'hardwareBackPress',
+      onBackPress,
+    );
+
+    return () => subscription.remove();
+  }, [navigation]),
+);
+const fetchingRef = React.useRef(false);
+
+const fetchOrderList = useCallback(async (overrideTableId) => {
+  if (fetchingRef.current) return;
+
+  try {
+    fetchingRef.current = true;
+
+    const rawId = overrideTableId ?? route.params?.tableId;
+
+    const safeId =
+      rawId !== undefined && rawId !== null
+        ? String(rawId).trim()
+        : null;
+
+    if (!safeId) {
+      setOrderList([]);
+      return;
+    }
+
+    const res = await ApiService.getOrderByTable(safeId);
+
+    let orders = [];
+
+    if (Array.isArray(res)) orders = res;
+    else if (Array.isArray(res?.data)) orders = res.data;
+    else if (Array.isArray(res?.orders)) orders = res.orders;
+    else if (Array.isArray(res?.data?.orders)) orders = res.data.orders;
+
+    setOrderList(prev => {
+      const oldData = JSON.stringify(prev);
+      const newData = JSON.stringify(orders);
+      return oldData === newData ? prev : orders;
+    });
+
+  } catch (err) {
+    console.log("❌ FETCH ORDER ERROR:", err?.message);
+  } finally {
+    fetchingRef.current = false;
+  }
+}, [route.params?.tableId]);
+// const fetchOrderList = useCallback(
+//   async overrideTableId => {
+//     try {
+//       const rawId = overrideTableId ?? route.params?.tableId;
+
+//       const safeId =
+//         rawId !== undefined &&
+//         rawId !== null &&
+//         String(rawId).trim() !== ''
+//           ? String(rawId).trim()
+//           : null;
+
+//       //console.log('📦 TABLE ID =>', safeId);
+
+//       if (!safeId) {
+//         setOrderList([]);
+//         return;
+//       }
+
+//       const res = await safeApiCall(
+//         ({ signal }={}) =>
+//           ApiService.getOrderByTable(safeId, { signal }),
+//         {
+//           source: 'OrderScreen.fetchOrderList',
+//           useLoader: false,
+//           skipConnectivityCheck: true,
+//         },
+//       );
+
+
+//       let orders = [];
+
+//       // ✅ handle all response formats
+//       if (Array.isArray(res)) {
+//         orders = res;
+//       } else if (Array.isArray(res?.data)) {
+//         orders = res.data;
+//       } else if (Array.isArray(res?.orders)) {
+//         orders = res.orders;
+//       } else if (Array.isArray(res?.data?.orders)) {
+//         orders = res.data.orders;
+//       } else if (Array.isArray(res?.data?.data)) {
+//         orders = res.data.data;
+//       }
+
+
+//       setOrderList(orders || []);
+//     } catch (err) {
+//       //console.log('❌ FETCH ORDER ERROR =>', err);
+
+//       if (isAbortLikeError(err)) {
+//         return;
+//       }
+
+//       setOrderList([]);
+
+//       Alert.alert(
+//         'Orders',
+//         err?.message || 'Failed to fetch orders',
+//       );
+//     }
+//   },
+//   [route.params?.tableId],
+// );
+useFocusEffect(
+  useCallback(() => {
+    fetchOrderList(route.params?.tableId);
+  }, [route.params?.tableId]),
+);
+ // =========================
+// TABLES LOAD
+// =========================
+useEffect(() => {
+  // ✅ load immediately from local DB/cache
+  hydrateTablesFromLocal();
+
+  // ✅ refresh from API/network
+  refreshTablesCacheFromNetwork()
+    .then(() => {
       hydrateTablesFromLocal();
-    }, [hydrateTablesFromLocal]),
+    })
+    .catch(err => {
+      ////console.log('❌ TABLE REFRESH ERROR =>', err);
+    });
+
+  // ✅ listen for future sync updates
+  const sub = DeviceEventEmitter.addListener(
+    CATALOG_SYNCED_EVENT,
+    () => {
+      ////console.log('🔄 TABLE EVENT RECEIVED');
+      hydrateTablesFromLocal();
+    },
   );
 
-  useEffect(() => {
-    const sub = DeviceEventEmitter.addListener(
-      CATALOG_SYNCED_EVENT,
-      hydrateTablesFromLocal,
-    );
-    return () => sub.remove();
-  }, [hydrateTablesFromLocal]);
+  return () => {
+    sub.remove();
+  };
+}, [hydrateTablesFromLocal]);
   useEffect(() => {
     const getUser = async () => {
       const userData = await AsyncStorage.getItem('user');
       const stored = await AsyncStorage.getItem('address');
       const locations = stored ? JSON.parse(stored) : [];
-      console.log(userData, 'userData', locations, locations[0]);
+      ////console.log(userData, 'userData', locations, locations[0]);
 
       const location = locations[0];
       if (userData) {
@@ -101,23 +276,7 @@ export default function OrderScreen({ route, navigation }) {
   // =========================
   // Fetch Orders
   // =========================
-  const fetchOrderList = async () => {
-    try {
-      const res = await safeApiCall(({ signal }) => ApiService.getOrderByTable(tableId, { signal }), {
-        source: 'OrderScreen.fetchOrderList',
-      });
-
-      if (Array.isArray(res.data)) {
-        setOrderList(res.data);
-      } else {
-        setOrderList([]);
-      }
-
-    } catch (err) {
-      setOrderList([]);
-      Alert.alert('Error', 'Failed to fetch orders');
-    }
-  };
+  // fetchOrderList defined above (useCallback) for stable focus + tableId updates
   // =========================
   // 🟢 Status Color
   // =========================
@@ -146,31 +305,43 @@ export default function OrderScreen({ route, navigation }) {
 
     try {
       const res = await safeApiCall(
-        ({ signal }) =>
+        ({ signal }={}) =>
           ApiService.cancelOrder(orderId, {
             cancel_note: cancelNotes,
           }, { signal }),
         { source: 'OrderScreen.confirmCancel' },
       );
 
-      if (res.status) {
-        Alert.alert('Success', 'Order canceled');
-        setCancelModalVisible(false);
-        navigation.navigate('Main', {
-          screen: 'Tables',
-        });
-      } else {
-        Alert.alert('Error', res.message);
-      }
+    if (res.status) {
+  setCancelModalVisible(false);
+  setCancelNotes('');
+
+ refreshAll();
+  Alert.alert('Success', 'Order canceled');
+
+  // ✅ navigate AFTER refresh
+  navigation.navigate('Main', {
+    screen: 'Tables',
+  });
+} else {
+  Alert.alert('Error', res.message);
+}
     } catch (err) {
       Alert.alert('Error', 'Cancel failed');
     }
   };
-
+const onRefresh = useCallback(async () => {
+  try {
+    setRefreshing(true);
+    await fetchOrderList();
+  } finally {
+    setRefreshing(false);
+  }
+}, [fetchOrderList]);
 const processBill = async (item, id) => {
   let billData = null;
   try {
-    const res = await safeApiCall(({ signal }) => ApiService.generateBill(id, { signal }), {
+    const res = await safeApiCall(({ signal }={}) => ApiService.generateBill(id, { signal }), {
       source: 'OrderScreen.processBill.generateBill',
     });
     if (!res.status) {
@@ -179,7 +350,7 @@ const processBill = async (item, id) => {
     }
     billData = res.data;
   } catch (e) {
-    console.log('❌ PROCESS ERROR:', e);
+    ////console.log('❌ PROCESS ERROR:', e);
     const errorText =
       e?.message || (typeof e === 'string'
         ? e
@@ -212,7 +383,7 @@ const processBill = async (item, id) => {
         });
       }
     } catch (printErr) {
-      console.log('❌ BILL PRINT ERROR:', printErr);
+      ////console.log('❌ BILL PRINT ERROR:', printErr);
       Toast.show({
         type: 'error',
         text1: 'Bill queued failed',
@@ -220,10 +391,13 @@ const processBill = async (item, id) => {
       });
     }
   }, 120);
+navigation.navigate('Main', {
+  screen: 'Tables',
+});
 
-  navigation.navigate('Main', {
-    screen: 'Tables',
-  });
+requestAnimationFrame(() => {
+  refreshAll();
+});
 };
   const handleBill = async (item, id) => {
     Alert.alert(
@@ -236,7 +410,7 @@ const processBill = async (item, id) => {
           onPress: async () => {
             // ✅ 🛑 SKIP PRINTER FOR LOCATION 19
             // if (location?.location_id == 19) {
-            //   console.log("🛑 Printing skipped for location 19");
+            //   ////console.log("🛑 Printing skipped for location 19");
 
             //   // 👉 Directly generate bill (no IP check, no printer)
             //   await processBill(item, id);
@@ -321,7 +495,7 @@ const processBill = async (item, id) => {
 
   const openEditModal = async id => {
     try {
-      const res = await safeApiCall(({ signal }) => ApiService.orderEdit_show(id, { signal }), {
+      const res = await safeApiCall(({ signal }={}) => ApiService.orderEdit_show(id, { signal }), {
         source: 'OrderScreen.openEditModal',
       });
 
@@ -427,9 +601,9 @@ const processBill = async (item, id) => {
         items: finalItems, // cleaned list
       };
 
-      console.log('FINAL PAYLOAD 👉', payload);
+      //console.log('FINAL PAYLOAD 👉', payload);
 
-      const res = await safeApiCall(({ signal }) => ApiService.orderUpdate(editOrderId, payload, { signal }), {
+      const res = await safeApiCall(({ signal }={}) => ApiService.orderUpdate(editOrderId, payload, { signal }), {
         source: 'OrderScreen.handleUpdateOrder',
       });
 
@@ -488,7 +662,7 @@ const processBill = async (item, id) => {
         onPress: async () => {
           try {
             const res = await safeApiCall(
-              ({ signal }) =>
+              ({ signal }={}) =>
                 ApiService.moveTable(orderId, {
                   new_table_id: table.id,
                 }, { signal }),
@@ -503,7 +677,8 @@ const processBill = async (item, id) => {
                 tableName: table.name,
               });
 
-              //fetchOrderList();
+              await fetchOrderList(table.id);
+              refreshTablesCacheFromNetwork().catch(() => {});
 
               Alert.alert('Success', 'Table moved');
             }
@@ -517,8 +692,8 @@ const processBill = async (item, id) => {
   // =========================
   // Render Order Card
   // =========================
-  const renderOrder = ({ item }) => {
-    const isDisabled = item.status !== 'open';
+const renderOrder = useCallback(
+  ({ item }) => {    const isDisabled = item.status !== 'open';
 
     return (
       <View style={styles.card}>
@@ -618,8 +793,11 @@ const processBill = async (item, id) => {
                   tableName,
                   orderId: item.id,
                   isadditems: true,
-                  onSelectProduct: () => fetchOrderList(),
-                },
+                  returnToOrderScreen: true,
+onSelectProduct: async () => {
+  await fetchOrderList();
+  refreshTablesCacheFromNetwork().catch(() => {});
+},                },
               });
             }}
           >
@@ -654,92 +832,213 @@ const processBill = async (item, id) => {
         </View>
       </View>
     );
-  };
+  });
 
   // =========================
   // UI
   // =========================
+  const firstOpenOrder = orderList.find(
+    o => String(o.status).toLowerCase() === 'open',
+  );
+
+  // const goToItemsForTable = () => {
+  //   const base = {
+  //     returnToOrderScreen: true,
+  //     onSelectProduct: () => fetchOrderList(),
+  //     tableId,
+  //     tableName,
+  //   };
+  //   if (firstOpenOrder) {
+  //     navigation.navigate('Main', {
+  //       screen: 'Items',
+  //       params: {
+  //         ...base,
+  //         orderId: firstOpenOrder.id,
+  //         isadditems: true,
+  //       },
+  //     });
+  //   } else {
+  //     navigation.navigate('Main', {
+  //       screen: 'Items',
+  //       params: {
+  //         ...base,
+  //         orderId: null,
+  //         isadditems: false,
+  //       },
+  //     });
+  //   }
+  // };
+  const refreshAll = useCallback(async () => {
+  await fetchOrderList();
+
+  refreshTablesCacheFromNetwork()
+    .catch(() => {});
+
+  hydrateTablesFromLocal();
+}, [fetchOrderList, hydrateTablesFromLocal]);
+const goToItemsForTable = () => {
+  navigation.navigate('Main', {
+    screen: 'Items',
+    params: {
+      returnToOrderScreen: true,
+onSelectProduct: async () => {
+  await fetchOrderList();
+  refreshTablesCacheFromNetwork().catch(() => {});
+},      tableId,
+      tableName,
+      orderId: null,
+      isadditems: false,
+    },
+  });
+};
   return (
     <View style={styles.container}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Text style={styles.title}>{tableName}</Text>
-        <QueueMonitorBadge />
+      <View style={styles.orderHeaderBar}>
+        <TouchableOpacity
+          onPress={() =>  navigation.navigate('Main', {
+          screen: 'Tables',
+        })}
+          style={styles.orderHeaderBackBtn}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          accessibilityLabel="Go back"
+        >
+          <Icon name="arrow-back" size={26} color="#fff" />
+        </TouchableOpacity>
+        <Text style={styles.orderHeaderTitle} numberOfLines={1}>
+          {tableName}
+        </Text>
+<View style={styles.orderHeaderRight}>
+
+  {/* 🔄 Refresh Button */}
+  <TouchableOpacity
+    onPress={onRefresh}
+    style={styles.refreshBtn}
+  >
+    <Icon name="refresh" size={22} color={colors.primary}/>
+  </TouchableOpacity>
+
+  <QueueMonitorBadge />
+
+</View>          
+          {/* <TouchableOpacity
+            onPress={goToItemsForTable}
+            style={styles.orderHeaderActionBtn}
+            accessibilityLabel={firstOpenOrder ? 'Add items' : 'Create order'}
+          >
+            <Icon
+              name={firstOpenOrder ? 'restaurant-outline' : 'add-circle-outline'}
+              size={26}
+              color="#fff"
+            />
+          </TouchableOpacity> */}
+         
       </View>
 
-      {orderList.length === 0 ? (
-        <View style={styles.emptyBox}>
-          <Text style={styles.emptyText}>No Orders Found</Text>
-        </View>
-      ) : (
-        <FlatList
-          data={orderList}
-          keyExtractor={item =>
-            item.id?.toString() || item.product_id.toString()
-          }
-          renderItem={renderOrder}
-          contentContainerStyle={{ paddingBottom: hp('20%') }}
-        />
-      )}
+      <View style={styles.orderBody}>
+        {orderList.length === 0 ? (
+          <View style={styles.emptyBox}>
+            <Text style={styles.emptyText}>No Orders Found</Text>
+          </View>
+        ) : (
+         <FlatList
+  data={orderList}
+  renderItem={renderOrder}
+  keyExtractor={(item) =>
+    item.id.toString()
+  }
 
-      {/* Create Order */}
-      {/* Button Row */}
-      <View style={styles.btnRow}>
-        {/* Back Button */}
-        <TouchableOpacity
-          style={styles.backBtn}
-          onPress={() => navigation.goBack()}
-        >
-          <Icon name="arrow-back" size={20} color="#fff" />
-          <Text style={styles.backText}>Back</Text>
-        </TouchableOpacity>
+  removeClippedSubviews={true}
 
-        {/* Create Order */}
-        <TouchableOpacity
-          style={styles.addBtn}
+  initialNumToRender={5}
+
+  maxToRenderPerBatch={5}
+
+  updateCellsBatchingPeriod={50}
+
+  windowSize={7}
+
+  showsVerticalScrollIndicator={false}
+
+  contentContainerStyle={{
+    paddingBottom: hp('12%'),
+  }}
+    refreshing={refreshing}
+  onRefresh={onRefresh}
+/>
+        )}
+      </View>
+      <TouchableOpacity
+  style={styles.floatingBtn}
+  onPress={goToItemsForTable}
+disabled={false}>
+  <Icon name="add" size={22} color="#fff" />
+
+  <Text style={styles.floatingBtnText}>
+  Create New Order
+</Text>
+</TouchableOpacity>
+      <Modal visible={cancelModalVisible} transparent animationType="fade">
+        <Pressable
+          style={styles.cancelModalBackdrop}
           onPress={() => {
-            navigation.navigate('Main', {
-              screen: 'Items',
-              params: {
-                tableId,
-                tableName,
-                orderId: null,
-                isadditems: false,
-                onSelectProduct: () => fetchOrderList(),
-              },
-            });
+            Keyboard.dismiss();
+            setCancelModalVisible(false);
           }}
         >
-          <Icon name="add" size={20} color="#fff" />
-          <Text style={styles.addText}>Create Order</Text>
-        </TouchableOpacity>
-      </View>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={styles.cancelModalKeyboard}
+          >
+            <Pressable
+              style={[styles.cancelModalCard, { maxWidth: cancelModalMaxWidth }]}
+              onPress={e => e.stopPropagation()}
+            >
+              <View style={styles.cancelModalIconWrap}>
+                <Icon name="warning-outline" size={wp('7%')} color="#dc3545" />
+              </View>
+              <Text style={styles.cancelModalTitle}>Cancel order</Text>
+              <Text style={styles.cancelModalSubtitle}>
+                This will cancel the selected order. Please add a short reason for
+                the kitchen or records.
+              </Text>
 
-      {/* Cancel Modal */}
-      <Modal visible={cancelModalVisible} transparent animationType="fade">
-        <View style={styles.modalBg}>
-          <View style={styles.modalBox}>
-            <Text style={styles.modalTitle}>Cancel Order</Text>
+              <Text style={styles.cancelModalLabel}>Reason (optional)</Text>
+              <TextInput
+                placeholder="e.g. Guest left, wrong table…"
+                value={cancelNotes}
+                placeholderTextColor="#9aa0a6"
+                onChangeText={setCancelNotes}
+                multiline
+                style={styles.cancelModalInput}
+                textAlignVertical="top"
+              />
 
-            <TextInput
-              placeholder="Enter reason"
-              value={cancelNotes}
-              placeholderTextColor={'#999'}
-              onChangeText={setCancelNotes}
-              multiline
-              style={styles.input}
-            />
-
-            <View style={styles.rowEnd}>
-              <TouchableOpacity onPress={() => setCancelModalVisible(false)}>
-                <Text style={{ color: '#999' }}>Close</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity onPress={confirmCancel}>
-                <Text style={{ color: colors.primary }}>Submit</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
+              <View style={styles.cancelModalActions}>
+                <TouchableOpacity
+                  style={styles.cancelModalBtnGhost}
+                  onPress={() => {
+                    Keyboard.dismiss();
+                    setCancelModalVisible(false);
+                  }}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.cancelModalBtnGhostText}>Keep order</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.cancelModalBtnDanger}
+                  onPress={() => {
+                    Keyboard.dismiss();
+                    confirmCancel();
+                  }}
+                  activeOpacity={0.9}
+                >
+                  <Icon name="close-circle-outline" size={20} color="#fff" style={{ marginRight: 6 }} />
+                  <Text style={styles.cancelModalBtnDangerText}>Cancel order</Text>
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </KeyboardAvoidingView>
+        </Pressable>
       </Modal>
       <Modal visible={editModalVisible} transparent animationType="slide">
         <View style={styles.bottomModalBg}>
@@ -896,8 +1195,71 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f4f6f9',
+  },
+  floatingBtn: {
+  position: 'absolute',
+  bottom: hp('3%'),
+  right: wp('4%'),
+  backgroundColor: colors.primary,
+  flexDirection: 'row',
+  alignItems: 'center',
+  paddingHorizontal: wp('5%'),
+  paddingVertical: hp('1.6%'),
+  borderRadius: 30,
+  elevation: 6,
+  shadowColor: '#000',
+  shadowOpacity: 0.2,
+  shadowRadius: 6,
+  shadowOffset: { width: 0, height: 3 },
+},
+
+floatingBtnText: {
+  color: '#fff',
+  marginLeft: 8,
+  fontFamily: fonts.bold,
+  fontSize: wp('3.8%'),
+},
+  orderHeaderBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    paddingTop: hp('1.4%'),
+    paddingBottom: hp('1.4%'),
+    paddingHorizontal: wp('3%'),
+    borderBottomLeftRadius: 18,
+    borderBottomRightRadius: 18,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+  },
+  orderHeaderBackBtn: {
+    padding: 4,
+    marginRight: wp('1%'),
+  },
+  orderHeaderTitle: {
+    flex: 1,
+    fontSize: wp('4.6%'),
+    fontFamily: fonts.bold,
+    color: '#fff',
+    marginHorizontal: wp('2%'),
+    textAlign: 'center',
+  },
+  orderHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    minWidth: wp('24%'),
+  },
+  orderHeaderActionBtn: {
+    padding: 6,
+    marginRight: wp('1.5%'),
+  },
+  orderBody: {
+    flex: 1,
     paddingHorizontal: wp('4%'),
-    paddingTop: hp('2%'),
+    paddingTop: hp('1.2%'),
   },
 
   title: {
@@ -960,7 +1322,114 @@ const styles = StyleSheet.create({
     fontFamily: fonts.medium,
   },
 
-  // ❌ Modal
+  // ❌ Cancel order modal (dedicated layout)
+  cancelModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(17, 24, 39, 0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: wp('4%'),
+    paddingVertical: hp('3%'),
+  },
+  cancelModalKeyboard: {
+    width: '100%',
+    maxWidth: 520,
+    alignItems: 'center',
+  },
+  cancelModalCard: {
+    width: '100%',
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    paddingHorizontal: wp('5%'),
+    paddingVertical: hp('2.5%'),
+    elevation: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+  },
+  cancelModalIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#fde8ea',
+    alignSelf: 'center',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: hp('1.5%'),
+  },
+  cancelModalTitle: {
+    fontFamily: fonts.bold,
+    fontSize: wp('4.8%'),
+    color: '#111',
+    textAlign: 'center',
+    marginBottom: hp('0.8%'),
+  },
+  cancelModalSubtitle: {
+    fontFamily: fonts.medium,
+    fontSize: wp('3.4%'),
+    color: '#5c6370',
+    textAlign: 'center',
+    lineHeight: wp('4.8%'),
+    marginBottom: hp('2%'),
+  },
+  cancelModalLabel: {
+    fontFamily: fonts.semiBold,
+    fontSize: wp('3.2%'),
+    color: '#374151',
+    marginBottom: hp('0.6%'),
+  },
+  cancelModalInput: {
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 12,
+    paddingHorizontal: wp('3.5%'),
+    paddingVertical: hp('1.4%'),
+    minHeight: hp('12%'),
+    fontSize: wp('3.5%'),
+    fontFamily: fonts.medium,
+    color: '#111',
+    marginBottom: hp('2%'),
+    backgroundColor: '#f9fafb',
+  },
+  cancelModalActions: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+  },
+  cancelModalBtnGhost: {
+    flex: 1,
+    marginRight: 6,
+    paddingVertical: hp('1.5%'),
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+  },
+  cancelModalBtnGhostText: {
+    fontFamily: fonts.semiBold,
+    fontSize: wp('3.5%'),
+    color: '#374151',
+  },
+  cancelModalBtnDanger: {
+    flex: 1,
+    marginLeft: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: hp('1.5%'),
+    borderRadius: 12,
+    backgroundColor: '#dc3545',
+    elevation: 2,
+  },
+  cancelModalBtnDangerText: {
+    fontFamily: fonts.bold,
+    fontSize: wp('3.5%'),
+    color: '#fff',
+  },
+
+  // ❌ Legacy cancel modal (kept for reference — unused)
   modalBg: {
     flex: 1,
     justifyContent: 'center',
@@ -1309,4 +1778,13 @@ const styles = StyleSheet.create({
     color: '#444',
     fontFamily: fonts.semiBold,
   },
+  refreshBtn: {
+  backgroundColor: "#fff",
+  padding: 8,
+  borderRadius: 10,
+  marginRight: 10,
+  justifyContent: "center",
+  alignItems: "center",
+  elevation: 3,
+},
 });

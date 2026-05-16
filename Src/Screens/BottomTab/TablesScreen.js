@@ -25,10 +25,10 @@ import fonts from "../../Utils/fonts";
      import Icons from "react-native-vector-icons/MaterialCommunityIcons";
 import { safeApiCall } from "../../Services/safeApiCall";
 import QueueMonitorBadge from "../../Components/QueueMonitorBadge";
-import requestManager from "../../Utils/requestManager";
+// import requestManager from "../../Utils/requestManager";
 import { getTablesRaw, formatTablesForUi } from "../../Database/catalogDb";
 import { CATALOG_SYNCED_EVENT } from "../../Services/catalogSyncService";
-
+import { refreshTablesCacheFromNetwork } from "../../Services/catalogSyncService";
 // Status Colors
 const STATUS_COLORS = {
   available: "#4CAF50",
@@ -86,7 +86,7 @@ const handleLogout = () => {
 
 const confirmLogout = async () => {
   try {
-    const res = await safeApiCall(({ signal }) => ApiService.logout({ signal }), {
+    const res = await safeApiCall(({ signal }={}) => ApiService.logout({ signal }), {
       source: "TablesScreen.confirmLogout",
     });
 
@@ -142,7 +142,7 @@ const confirmLogout = async () => {
 const [tables, setTables] = useState([]);
   const { forceResetLoader } = useLoader();
 const [userName, setUserName] = useState("");
-
+const [refreshing, setRefreshing] = useState(false);
   const hydrateTablesFromLocal = useCallback(() => {
     setTables(formatTablesForUi(getTablesRaw()));
   }, []);
@@ -171,18 +171,48 @@ useEffect(() => {
   };
   getUser();
   return () => {
-    requestManager.cancelByScopePrefix("TablesScreen");
+    // requestManager.cancelByScopePrefix("TablesScreen");
     forceResetLoader("TablesScreen.unmount");
   };
 }, []);
+const onRefresh = useCallback(async () => {
+  try {
+    setRefreshing(true);
 
-  // ✅ NAVIGATE TO CHAIRS SCREEN
+    // 1. sync from API
+    await refreshTablesCacheFromNetwork().catch(() => {});
+
+    // 2. reload from local DB
+    const data = formatTablesForUi(getTablesRaw());
+    setTables([...data]);
+
+  } catch (e) {
+    console.log("❌ Refresh error:", e);
+  } finally {
+    setRefreshing(false);
+  }
+}, []);
+  // ✅ NAVIGATE: 0 orders → Items directly; otherwise → Order screen
   const handleTablePress = (table) => {
-    navigation.navigate("OrderScreen", {
+    console.log(table,"tableId");
+    
+    const orderCount = Number(table?.orders) || 0;
+    if (orderCount === 0) {
+      navigation.navigate("Items", {
+        tableId: table.id,
+        tableName: table.name,
+        orderId: null,
+        isadditems: false,
+      });
+      return;
+    }else{
+ navigation.navigate("OrderScreen", {
       tableId: table.id,
       tableName: table.name,
-      chairs: table.chairs, // 🔥 PASS CHAIRS
+      chairs: table.chairs,
     });
+    }
+   
   };
 
   const renderTable = ({ item }) => {
@@ -222,21 +252,33 @@ useEffect(() => {
   </View>
 
   {/* RIGHT SECTION */}
-  <View style={styles.rightSection}>
-    <QueueMonitorBadge />
-    
-    {/* TABLE COUNT */}
-    <View style={styles.countBadge}>
-      <Text style={styles.countNumber}>{tables.length}</Text>
-      <Text style={styles.countLabel}>Tables</Text>
-    </View>
+<View style={styles.rightSection}>
 
-    {/* LOGOUT BUTTON */}
-    <TouchableOpacity onPress={()=>navigation.navigate("SettingsScreen",{userName:userName})} style={styles.logoutBtn}>
-      <Icons name="cog-outline" size={20} color={colors.primary} />
-    </TouchableOpacity>
+  {/* 🔄 Refresh Button */}
+  <TouchableOpacity
+    onPress={onRefresh}
+    style={styles.refreshBtn}
+  >
+    <Icons name="refresh" size={20} color={colors.primary} />
+  </TouchableOpacity>
 
+  {/* TABLE COUNT */}
+  <View style={styles.countBadge}>
+    <Text style={styles.countNumber}>{tables.length}</Text>
+    <Text style={styles.countLabel}>Tables</Text>
   </View>
+
+  {/* SETTINGS */}
+  <TouchableOpacity
+    onPress={() =>
+      navigation.navigate("SettingsScreen", { userName })
+    }
+    style={styles.logoutBtn}
+  >
+    <Icons name="cog-outline" size={20} color={colors.primary} />
+  </TouchableOpacity>
+
+</View>
 </View>
 
    
@@ -265,6 +307,9 @@ useEffect(() => {
     justifyContent: "space-between",
     marginBottom: 15, // spacing between rows
   }}
+    // ✅ PULL TO REFRESH
+  refreshing={refreshing}
+  onRefresh={onRefresh}
   contentContainerStyle={{ paddingBottom: hp("5%") }}
 />
 
@@ -520,6 +565,15 @@ logoutBtn: {
   justifyContent: "center",
   alignItems: "center",
 
+  elevation: 3,
+},
+refreshBtn: {
+  backgroundColor: "#fff",
+  padding: 8,
+  borderRadius: 10,
+  marginRight: 10,
+  justifyContent: "center",
+  alignItems: "center",
   elevation: 3,
 },
 });

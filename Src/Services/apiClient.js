@@ -9,7 +9,7 @@ export const api = axios.create({
   //dev_url
    //baseURL: 'https://jkansfoods.sarasbillingpro.com/api',
 
-  timeout: 10000, 
+  timeout: 15000, 
   headers: {
     Accept: "application/json",
   },

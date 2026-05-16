@@ -12,55 +12,88 @@ const normalizeError = error => {
   }
   return new Error(typeof error === "string" ? error : "Unexpected error");
 };
-
-export const safeApiCall = async (task, options = {}) => {
+export const safeApiCall = async (
+  task,
+  options = {},
+) => {
   const {
     useLoader = true,
     source = "safeApiCall",
     timeoutMs = DEFAULT_API_TIMEOUT_MS,
     onError,
     fallbackValue = null,
-    scope = source,
     throwOnError = true,
+    skipConnectivityCheck = false,
   } = options;
 
   const loader = getLoaderController();
-  const requestId = useLoader && loader ? loader.showLoader(source) : null;
-  const req = requestManager.createRequest(scope);
-  logger.log("safeApiCall", `request start source=${source} scope=${scope} req=${req.requestId}`);
+
+  let requestId = null;
 
   try {
-    if (!getIsOnline()) {
+    if (useLoader && loader) {
+      requestId = loader.showLoader(source);
+    }
+
+    logger.log(
+      "safeApiCall",
+      `🚀 REQUEST START => ${source}`
+    );
+
+    if (
+      !skipConnectivityCheck &&
+      !getIsOnline()
+    ) {
       throw new Error("OFFLINE");
     }
+
     const response = await withTimeout(
-      Promise.resolve().then(() => task({ signal: req.signal })),
+      task(),
       timeoutMs,
       `${source} timeout`
     );
-    logger.log("safeApiCall", `request success source=${source} req=${req.requestId}`);
-    logger.log("safeApiCall", "response payload", response);
+
     return response;
+
   } catch (error) {
     const finalError = normalizeError(error);
-    if (finalError?.message?.includes("timeout")) {
-      logger.warn("safeApiCall", `timeout source=${source} req=${req.requestId}`);
-    } else if (finalError?.name === "CanceledError" || finalError?.message?.includes("canceled")) {
-      logger.warn("safeApiCall", `request cancelled source=${source} req=${req.requestId}`);
-    }
-    logger.error("safeApiCall", `error source=${source}`, finalError);
+
+    logger.error(
+      "safeApiCall",
+      `❌ ERROR => ${source}`,
+      finalError
+    );
+
     if (typeof onError === "function") {
       onError(finalError);
     }
+
     if (!throwOnError) {
       return fallbackValue;
     }
+
     throw finalError;
+
   } finally {
-    requestManager.completeRequest(req.requestId);
-    logger.log("safeApiCall", `final cleanup source=${source} req=${req.requestId}`);
-    if (useLoader && loader) {
-      loader.hideLoader(requestId, source);
+    try {
+      if (
+        useLoader &&
+        loader &&
+        requestId != null
+      ) {
+        loader.hideLoader(requestId, source);
+      }
+    } catch (e) {
+      logger.error(
+        "safeApiCall",
+        "hideLoader failed",
+        e
+      );
     }
+
+    logger.log(
+      "safeApiCall",
+      `🧹 CLEANUP => ${source}`
+    );
   }
 };

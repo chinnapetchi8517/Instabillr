@@ -127,3 +127,27 @@ export function scheduleBackgroundCatalogSync(delayMs = 400) {
 export async function manualSyncCatalog() {
   return syncCatalogFromNetwork({ silent: false, mode: "manual" });
 }
+
+let tablesRefreshInFlight = false;
+
+/** Lightweight tables-only refresh (e.g. after move table) — updates SQLite + emits catalogSynced */
+export async function refreshTablesCacheFromNetwork() {
+  if (tablesRefreshInFlight) {
+    return { skipped: true };
+  }
+  tablesRefreshInFlight = true;
+  try {
+    const res = await ApiService.getTables();
+    if (res?.status && Array.isArray(res.data)) {
+      saveTablesPayload(res.data);
+      DeviceEventEmitter.emit(CATALOG_SYNCED_EVENT, { ok: true });
+      return { ok: true };
+    }
+    return { ok: false };
+  } catch (e) {
+    logger.error("CatalogSync", "refreshTables failed", e);
+    return { ok: false, error: e };
+  } finally {
+    tablesRefreshInFlight = false;
+  }
+}

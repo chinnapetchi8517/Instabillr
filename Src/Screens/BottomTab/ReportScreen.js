@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import {
   View,
   Text,
@@ -25,11 +25,31 @@ import Icon from "react-native-vector-icons/Ionicons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { safeApiCall } from "../../Services/safeApiCall";
 import QueueMonitorBadge from "../../Components/QueueMonitorBadge";
-import requestManager from "../../Utils/requestManager";
+// import requestManager from "../../Utils/requestManager";
 import { getTablesRaw } from "../../Database/catalogDb";
 import { CATALOG_SYNCED_EVENT } from "../../Services/catalogSyncService";
+import { logger } from "../../Utils/logger";
 
-export default function ReportsScreen({navigation}) {
+const reportSafeOpts = (source) => ({
+  source,
+  useLoader: false,
+  skipConnectivityCheck: true,
+  scope: source,
+});
+
+const extractReportOrders = (res) => {
+  if (!res) return [];
+  if (Array.isArray(res)) return res;
+  if (Array.isArray(res.data)) return res.data;
+  if (res.data && Array.isArray(res.data.orders)) return res.data.orders;
+  if (Array.isArray(res.orders)) return res.orders;
+  return [];
+};
+
+const isReportFailed = (res) =>
+  res && (res.status === false || res.success === false);
+
+export default function ReportsScreen({ navigation }) {
     const [tables, setTables] = useState([]);
   const [selectedTable, setSelectedTable] = useState(null);
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -46,7 +66,9 @@ useEffect(() => {
     const userData = await AsyncStorage.getItem("user");
     if (userData) {
       const parsed = JSON.parse(userData);
-      setUserName(parsed.username); // or username
+      setUserName(
+        parsed.username || parsed.name || parsed.email || "",
+      );
     }
   };
   getUser();
@@ -66,40 +88,47 @@ const onChangeDate = (event, date) => {
     }
   };
 
-  // After fetching data from API
-const fetchReport = async () => {
-  try {
-    setLoading(true);
-    let res = {};
+  const fetchReport = useCallback(async () => {
+    try {
+      setLoading(true);
+      let res = {};
 
-    const dateStr = selectedDate.toISOString().split("T")[0];
+      const dateStr = selectedDate.toISOString().split("T")[0];
 
-    if (selectedTable && selectedDate) {
-      res = await safeApiCall(
-        ({ signal }) => ApiService.getTableReportByDate(selectedTable.id, dateStr, { signal }),
-        { source: "ReportScreen.getTableReportByDate" }
-      );
-    } else if (selectedTable) {
-      res = await safeApiCall(
-        ({ signal }) => ApiService.getTableReport(selectedTable.id, { signal }),
-        { source: "ReportScreen.getTableReport" }
-      );
-    } else if (selectedDate) {
-      res = await safeApiCall(
-        ({ signal }) => ApiService.getDailyReportByDate(dateStr, { signal }),
-        { source: "ReportScreen.getDailyReportByDate" }
-      );
-    } else {
-      res = await safeApiCall(({ signal }) => ApiService.getDailyReport({ signal }), {
-        source: "ReportScreen.getDailyReport",
-      });
-    }
+      if (selectedTable && selectedDate) {
+        res = await safeApiCall(
+          ({ signal }={}) =>
+            ApiService.getTableReportByDate(selectedTable.id, dateStr, { signal }),
+          reportSafeOpts("ReportScreen.getTableReportByDate"),
+        );
+      } else if (selectedTable) {
+        res = await safeApiCall(
+          ({ signal }={}) => ApiService.getTableReport(selectedTable.id, { signal }),
+          reportSafeOpts("ReportScreen.getTableReport"),
+        );
+      } else if (selectedDate) {
+        res = await safeApiCall(
+          ({ signal }={}) => ApiService.getDailyReportByDate(dateStr, { signal }),
+          reportSafeOpts("ReportScreen.getDailyReportByDate"),
+        );
+      } else {
+        res = await safeApiCall(
+          ({ signal }={}) => ApiService.getDailyReport({ signal }),
+          reportSafeOpts("ReportScreen.getDailyReport"),
+        );
+      }
 
-    console.log("📊 REPORT API:", res);
+      logger.log("ReportScreen", "API response keys", res && typeof res === "object" ? Object.keys(res) : res);
 
-    if (res?.status) {
-      const orders = res?.data || []; // ✅ correct path
+      if (isReportFailed(res)) {
+        if (!isMountedRef.current) return;
+        setTransactions([]);
+        setTotalOrders(0);
+        setTotalRevenue(0);
+        return;
+      }
 
+      const orders = extractReportOrders(res);
       const mapped = orders.map((item) => ({
         id: item.order_id,
         table: item.table_name,
@@ -113,30 +142,27 @@ const fetchReport = async () => {
       if (!isMountedRef.current) return;
       setTransactions(mapped);
 
-      // ✅ summary from API (correct)
-      const summary = res?.summary || {};
-      setTotalOrders(summary.total_orders);
-      setTotalRevenue(summary.grand_total);
-    } else {
+      const summary = res?.summary || res?.data?.summary || {};
+      setTotalOrders(summary.total_orders ?? summary.totalOrders ?? 0);
+      setTotalRevenue(
+        Number(summary.grand_total ?? summary.grandTotal ?? 0) || 0,
+      );
+    } catch (error) {
+      logger.error("ReportScreen", "fetchReport", error);
       if (!isMountedRef.current) return;
       setTransactions([]);
       setTotalOrders(0);
       setTotalRevenue(0);
+    } finally {
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
-  } catch (error) {
-    console.log("❌ Report API Error:", error);
-    if (!isMountedRef.current) return;
-    setTransactions([]);
-  } finally {
-    if (isMountedRef.current) {
-      setLoading(false);
-    }
-  }
-};
+  }, [selectedDate, selectedTable]);
+
   useEffect(() => {
     isMountedRef.current = true;
     loadTablesFromLocal();
-    fetchReport(); // show today's report on load
     const sub = DeviceEventEmitter.addListener(
       CATALOG_SYNCED_EVENT,
       loadTablesFromLocal,
@@ -144,15 +170,14 @@ const fetchReport = async () => {
     return () => {
       isMountedRef.current = false;
       sub.remove();
-      requestManager.cancelByScopePrefix("ReportScreen");
+      // requestManager.cancelByScopePrefix("ReportScreen");
       forceResetLoader("ReportScreen.unmount");
     };
   }, []);
 
-  // Re-fetch report when filters change
   useEffect(() => {
     fetchReport();
-  }, [selectedDate, selectedTable]);
+  }, [fetchReport]);
 
   // Totals
  const totalOrders = totalOrderss;
@@ -218,8 +243,10 @@ const handleLogout = () => {
 
 const confirmLogout = async () => {
   try {
-    const res = await safeApiCall(({ signal }) => ApiService.logout({ signal }), {
+    const res = await safeApiCall(({ signal }={}) => ApiService.logout({ signal }), {
       source: "ReportScreen.confirmLogout",
+      useLoader: false,
+      skipConnectivityCheck: true,
     });
 
     if (res?.status) {
