@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import AppNavigator from './Navigation/AppNavigator';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { AppState, StatusBar, InteractionManager, Platform } from 'react-native';
+import { AppState, StatusBar, InteractionManager, Platform ,View} from 'react-native';
 import colors from './Utils/colors';
 import { getLoaderController, LoaderProvider } from './Context/LoaderContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -87,8 +87,14 @@ useEffect(() => {
   }, [initialRoute]);
 
   return (
-    <SafeAreaView style={{ flex: 1 }}>
-      <StatusBar backgroundColor={colors.primary} />
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.primary }}>
+    <StatusBar
+      backgroundColor={colors.primary}
+      barStyle="light-content"
+      translucent={false}
+    />
+
+    <View style={{ flex: 1, backgroundColor: "#fff" }}>
       <LoaderProvider>
         <NavigationContainer>
  {initialRoute && (
@@ -101,6 +107,7 @@ useEffect(() => {
         bottomOffset={Platform.OS === 'ios' ? 42 : 28}
         visibilityTime={4000}
       />
+      </View>
     </SafeAreaView>
   );
 }

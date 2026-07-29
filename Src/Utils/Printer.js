@@ -67,19 +67,29 @@ const LINE = "-".repeat(TOTAL_WIDTH) + "\n";
 // ===============================
 // BUILD KOT
 // ===============================
-const buildKOT = (order, userName, tableName) => {
+const buildKOT = (
+  order,
+  userName,
+  tableName,
+  isRunningOrder = false
+) => {
   let txt = "";
 
   const d = new Date();
 
   txt += "\n";
 
+  // ===============================
+  // HEADER
+  // ===============================
   txt += BOLD_ON;
-  txt += centerText(`TABLE : ${tableName}`);
+  txt += centerText("KITCHEN ORDER TICKET");
   txt += BOLD_OFF;
-
-  txt += `Kot No : ${order.id}\n`;
-
+if (isRunningOrder) {
+  txt += BOLD_ON;
+  txt += centerText("RUNNING ORDER");
+  txt += BOLD_OFF;
+}
   txt += leftRight(
     `Date : ${d.toLocaleDateString("en-GB")}`,
     `Time : ${d.toLocaleTimeString()}`
@@ -90,6 +100,10 @@ const buildKOT = (order, userName, tableName) => {
   txt += BOLD_OFF;
 
   txt += LINE;
+
+  // ===============================
+  // ITEMS
+  // ===============================
   txt += "No    Name                         Qty\n";
   txt += LINE;
 
@@ -111,16 +125,92 @@ const buildKOT = (order, userName, tableName) => {
 
     if (item.remarks?.trim()) {
       txt += SMALL_TEXT;
-      txt += `       *${item.remarks}\n`;
+      txt += `      * ${item.remarks}\n`;
       txt += NORMAL_TEXT;
     }
   });
 
   txt += LINE;
+
+  // ===============================
+  // FOOTER
+  // ===============================
+  txt += "\n";
+
+  txt += leftRight(
+    `KOT : ${order.id}`,
+    `TABLE : ${tableName}`
+  );
+
+  
+
+  txt += LINE;
+
+  txt += centerText("*** THANK YOU ***");
+
   txt += "\n\n\n";
 
   return txt;
 };
+// const buildKOT = (order, userName, tableName,isRunningOrder = false) => {
+//   let txt = "";
+
+//   const d = new Date();
+
+//   txt += "\n";
+
+//   txt += BOLD_ON;
+//   txt += centerText(`TABLE : ${tableName}`);
+  
+//   txt += BOLD_OFF;
+// if (isRunningOrder) {
+//   txt += BOLD_ON;
+//   txt += centerText("RUNNING ORDER");
+//   txt += BOLD_OFF;
+// }
+//   txt += `Kot No : ${order.id}\n`;
+
+//   txt += leftRight(
+//     `Date : ${d.toLocaleDateString("en-GB")}`,
+//     `Time : ${d.toLocaleTimeString()}`
+//   );
+
+//   txt += BOLD_ON;
+//   txt += `Waiter : ${userName || "N/A"}\n`;
+//   txt += BOLD_OFF;
+
+//   txt += LINE;
+//   txt += "No    Name                         Qty\n";
+//   txt += LINE;
+
+//   const NAME_WIDTH = 30;
+
+//   order.items.forEach((item, i) => {
+//     let name = item.product_name || "";
+
+//     if (name.length > NAME_WIDTH) {
+//       name = name.substring(0, NAME_WIDTH - 2) + "..";
+//     }
+
+//     txt +=
+//       `${String(i + 1).padEnd(6)}` +
+//       `${name.padEnd(30)}` +
+//       `${parseFloat(item.qty || 0)
+//         .toFixed(0)
+//         .padStart(12)}\n`;
+
+//     if (item.remarks?.trim()) {
+//       txt += SMALL_TEXT;
+//       txt += `       *${item.remarks}\n`;
+//       txt += NORMAL_TEXT;
+//     }
+//   });
+
+//   txt += LINE;
+//   txt += "\n\n\n";
+
+//   return txt;
+// };
 
 // ===============================
 // SAFE CONNECTION CLOSE
@@ -143,14 +233,24 @@ const safeCloseConnection = async () => {
 // ===============================
 // EXECUTE PRINT
 // ===============================
-const executePrint = async (order, userName, tableName) => {
+const executePrint = async (order, userName, tableName,isRunningOrder) => {
+ const kotText = buildKOT(order, userName, tableName,isRunningOrder);
+  console.log("🖨️ START PRINT:", order.id);
+
+  // Mock Preview
+  if (IS_MOCK) {
+    console.log("========== KOT PREVIEW ==========");
+    console.log(kotText);
+    console.log("=================================");
+    return true;
+  }
   const ip = await getPrinterIP();
 
   if (!ip) {
     throw new Error("NO_PRINTER_IP");
   }
 
-  const kotText = buildKOT(order, userName, tableName);
+  //const kotText = buildKOT(order, userName, tableName,isRunningOrder);
 
   console.log("🖨️ START PRINT:", order.id);
 
@@ -216,7 +316,8 @@ const processQueue = async () => {
       await executePrint(
         job.order,
         job.userName,
-        job.tableName
+        job.tableName,
+         job.isRunningOrder
       );
     } catch (e) {
       console.log("❌ PRINT ERROR:", e?.message || e);
@@ -244,12 +345,14 @@ const processQueue = async () => {
 export const printKOT = async (
   order,
   userName,
-  tableName
+  tableName,
+   isRunningOrder = false
 ) => {
   printQueue.push({
     order,
     userName,
     tableName,
+    isRunningOrder,
   });
 
   processQueue();

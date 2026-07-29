@@ -8,6 +8,7 @@ import {
   TextInput,
   Alert,
   DeviceEventEmitter,
+  StatusBar
 } from "react-native";
 
 import Icon from "react-native-vector-icons/Ionicons";
@@ -29,6 +30,7 @@ import QueueMonitorBadge from "../../Components/QueueMonitorBadge";
 import { getTablesRaw, formatTablesForUi } from "../../Database/catalogDb";
 import { CATALOG_SYNCED_EVENT } from "../../Services/catalogSyncService";
 import { refreshTablesCacheFromNetwork } from "../../Services/catalogSyncService";
+import { SafeAreaView } from "react-native-safe-area-context";
 // Status Colors
 const STATUS_COLORS = {
   available: "#4CAF50",
@@ -242,8 +244,21 @@ const onRefresh = useCallback(async () => {
 
 
   return (
-    <>
+  <SafeAreaView
+     edges={["top"]}
+  style={{
+    flex: 1,
+    backgroundColor: colors.primary,
+  }}
+  >
+    <StatusBar
+      backgroundColor={colors.primary}
+      barStyle="light-content"
+    />
 
+    <View style={{ flex: 1, backgroundColor: colors.primary }}>
+
+    
 <View style={styles.header}>
   {/* LEFT SECTION */}
   <View style={styles.leftSection}>
@@ -320,7 +335,10 @@ const onRefresh = useCallback(async () => {
         {/* <Legend color="#9E9E9E" label="Partial" /> */}
       </View>
     </View>
-     </>
+    
+     </View>
+     </SafeAreaView>
+    
   );
 }
 
@@ -341,10 +359,15 @@ const styles = StyleSheet.create({
 
   /* HEADER */
   header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: hp("2%"),
+    backgroundColor: colors.primary,
+  paddingTop:
+    Platform.OS === "android"
+      ? StatusBar.currentHeight
+      : 10,
+  paddingBottom: 14,
+  paddingHorizontal: 16,
+  borderBottomLeftRadius: 20,
+  borderBottomRightRadius: 20,
   },
 
   title: {

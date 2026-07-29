@@ -333,7 +333,10 @@ const confirmLogout = async () => {
   <Text style={styles.headerTitle}>Settings</Text>
 
   {/* RIGHT */}
-  <QueueMonitorBadge />
+   <TouchableOpacity >
+    {/* <Icons name="arrow-left" size={wp("6%")} color="#fff" /> */}
+  </TouchableOpacity>
+  {/* <QueueMonitorBadge /> */}
 
 </View>
     <View style={styles.container}>

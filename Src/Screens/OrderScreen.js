@@ -68,7 +68,7 @@ export default function OrderScreen({ route, navigation }) {
 
   const [cancelModalVisible, setCancelModalVisible] = useState(false);
   const [cancelNotes, setCancelNotes] = useState('');
-
+const [appliedDiscounts, setAppliedDiscounts] = useState({});
   const { forceResetLoader } = useLoader();
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editItems, setEditItems] = useState([]);
@@ -82,6 +82,12 @@ export default function OrderScreen({ route, navigation }) {
   const [pendingOrder, setPendingOrder] = useState(null);
   const [tableModal, setTableModal] = useState(false);
   const [tables, setTables] = useState([]);
+  const [discountModal, setDiscountModal] = useState(false);
+const [billPayload, setBillPayload] = useState({});
+const [discountType, setDiscountType] = useState("fixed");
+const [discountAmount, setDiscountAmount] = useState("");
+const [discountReason, setDiscountReason] = useState("");
+const [selectedOrderId, setSelectedOrderId] = useState(null);
 const [refreshing, setRefreshing] = useState(false);
   const [editMeta, setEditMeta] = useState({
     table_id: null,
@@ -340,26 +346,48 @@ const onRefresh = useCallback(async () => {
 }, [fetchOrderList]);
 const processBill = async (item, id) => {
   let billData = null;
+
   try {
-    const res = await safeApiCall(({ signal }={}) => ApiService.generateBill(id, { signal }), {
-      source: 'OrderScreen.processBill.generateBill',
-    });
+ console.log(billPayload,"billPayloadbillPayload");
+ 
+
+    const res = await safeApiCall(
+      ({ signal } = {}) =>
+        ApiService.generateBill(
+          id,
+          billPayload,
+          { signal }
+        ),
+      {
+        source: "OrderScreen.processBill.generateBill",
+      }
+    );
+
+    console.log("Generate Bill Response:", res);
+
     if (!res.status) {
-      Alert.alert('Error', res.message);
+      Alert.alert("Error", res.message);
       return;
     }
+
     billData = res.data;
+
+    // Clear discount after successful bill generation
+    setDiscountAmount("");
+    setDiscountReason("");
+    setDiscountType("fixed");
+    setDiscountModal(false);
+
   } catch (e) {
-    ////console.log('❌ PROCESS ERROR:', e);
     const errorText =
-      e?.message || (typeof e === 'string'
-        ? e
-        : JSON.stringify(e));
-    Alert.alert('Error', errorText);
+      e?.message ||
+      (typeof e === "string" ? e : JSON.stringify(e));
+
+    Alert.alert("Error", errorText);
     return;
   }
 
-  // Printing is intentionally non-blocking for UI responsiveness.
+  // Print Bill
   setTimeout(async () => {
     try {
       const queueResult = await printBiller(
@@ -367,37 +395,37 @@ const processBill = async (item, id) => {
         userName,
         location,
         billData,
-        tableName,
+        tableName
       );
 
       if (queueResult?.duplicate) {
         Toast.show({
-          type: 'info',
-          text1: 'Bill print already queued',
+          type: "info",
+          text1: "Bill print already queued",
         });
       } else {
         Toast.show({
-          type: 'success',
-          text1: 'Bill generated',
-          text2: 'Print job added to queue.',
+          type: "success",
+          text1: "Bill generated",
+          text2: "Print job added to queue.",
         });
       }
     } catch (printErr) {
-      ////console.log('❌ BILL PRINT ERROR:', printErr);
       Toast.show({
-        type: 'error',
-        text1: 'Bill queued failed',
-        text2: 'Printer unavailable. Saved for retry.',
+        type: "error",
+        text1: "Bill queue failed",
+        text2: "Printer unavailable. Saved for retry.",
       });
     }
   }, 120);
-navigation.navigate('Main', {
-  screen: 'Tables',
-});
 
-requestAnimationFrame(() => {
-  refreshAll();
-});
+  navigation.navigate("Main", {
+    screen: "Tables",
+  });
+
+  requestAnimationFrame(() => {
+    refreshAll();
+  });
 };
   const handleBill = async (item, id) => {
     Alert.alert(
@@ -694,7 +722,22 @@ requestAnimationFrame(() => {
   // =========================
 const renderOrder = useCallback(
   ({ item }) => {    const isDisabled = item.status !== 'open';
+const discount = appliedDiscounts[item.id];
 
+let finalTotal = Number(item.total);
+
+if (discount) {
+  if (discount.discount_type === "fixed") {
+    finalTotal = Math.max(
+      finalTotal - discount.discount_amount,
+      0
+    );
+  } else {
+    finalTotal =
+      finalTotal -
+      (finalTotal * discount.discount_amount) / 100;
+  }
+}
     return (
       <View style={styles.card}>
         {/* Header with Status */}
@@ -753,7 +796,23 @@ const renderOrder = useCallback(
         </View>
 
         {/* Total */}
-        <Text style={styles.totalText}>Total: ₹{item.total}</Text>
+       <View style={{ marginTop: 8 }}>
+  {discount && (
+    <Text
+      style={{
+        textDecorationLine: "line-through",
+        color: "#888",
+        fontSize: 14,
+      }}
+    >
+      Original: ₹{item.total}
+    </Text>
+  )}
+
+  <Text style={styles.totalText}>
+    Total: ₹{finalTotal.toFixed(2)}
+  </Text>
+</View>
 
         {/* Buttons */}
         {/* ================= ACTIONS ================= */}
@@ -778,7 +837,18 @@ const renderOrder = useCallback(
           <Icon name="receipt-outline" size={20} color="#fff" />
           <Text style={styles.billText}>Generate Bill</Text>
         </TouchableOpacity>
-
+{!appliedDiscounts[item.id] && (
+  <TouchableOpacity
+    style={styles.discountBtn}
+    onPress={() => {
+      setSelectedOrderId(item.id);
+      setDiscountModal(true);
+    }}
+  >
+    <Icon name="pricetag-outline" size={20} color="#fff" />
+    <Text style={styles.discountText}>Apply Discount</Text>
+  </TouchableOpacity>
+)}
         {/* ⚡ QUICK ACTIONS */}
         <View style={styles.quickActionsRow}>
           {/* ➕ Add */}
@@ -890,6 +960,34 @@ onSelectProduct: async () => {
       isadditems: false,
     },
   });
+};
+const submitDiscount = async () => {
+  if (!discountAmount) {
+    Alert.alert("Validation", "Please enter discount amount");
+    return;
+  }
+
+  const payload = {
+    discount_type: discountType,
+    discount_amount: Number(discountAmount),
+    discount_reason: discountReason,
+  };
+
+  setBillPayload(payload);
+
+  // Save discount for this order
+  setAppliedDiscounts(prev => ({
+    ...prev,
+    [selectedOrderId]: payload,
+  }));
+
+  setDiscountModal(false);
+
+  setDiscountAmount("");
+  setDiscountReason("");
+  setDiscountType("fixed");
+
+  Alert.alert("Success", "Discount added successfully.");
 };
   return (
     <View style={styles.container}>
@@ -1188,10 +1286,244 @@ disabled={false}>
           </View>
         </View>
       </Modal>
+      <Modal
+    visible={discountModal}
+    transparent
+    animationType="fade"
+>
+<View style={styles.overlay}>
+<View style={styles.discountCard}>
+
+<Text style={styles.modalTitle}>
+    Discount
+</Text>
+
+<Text style={styles.label}>
+Discount Type *
+</Text>
+
+<View style={styles.typeRow}>
+
+<TouchableOpacity
+  style={[
+    styles.typeBtn,
+    discountType === "fixed" && styles.selectedType,
+  ]}
+  onPress={() => setDiscountType("fixed")}
+>
+  <Text
+    style={[
+      styles.typeText,
+      discountType === "fixed" && styles.selectedTypeText,
+    ]}
+  >
+    Fixed
+  </Text>
+</TouchableOpacity>
+
+<TouchableOpacity
+  style={[
+    styles.typeBtn,
+    discountType === "percentage" && styles.selectedType,
+  ]}
+  onPress={() => setDiscountType("percentage")}
+>
+  <Text
+    style={[
+      styles.typeText,
+      discountType === "percentage" && styles.selectedTypeText,
+    ]}
+  >
+    Percentage
+  </Text>
+</TouchableOpacity>
+
+</View>
+
+<Text style={styles.label}>
+Discount Amount *
+</Text>
+
+<TextInput
+placeholder="0.00"
+keyboardType="numeric"
+value={discountAmount}
+onChangeText={setDiscountAmount}
+style={styles.input2}
+/>
+
+<Text style={styles.label}>
+Discount Reason
+</Text>
+
+<TextInput
+  placeholder="Reason"
+  value={discountReason}
+  onChangeText={setDiscountReason}
+  multiline
+  style={[styles.input2, styles.reasonInput]}
+/>
+
+<View style={styles.btnRow2}>
+
+<TouchableOpacity
+  style={styles.cancelBtn1}
+  onPress={() => setDiscountModal(false)}
+>
+  <Text style={styles.cancelText}>Cancel</Text>
+</TouchableOpacity>
+
+<TouchableOpacity
+  style={styles.saveBtn}
+  onPress={submitDiscount}
+>
+  <Text style={styles.saveText}>Update</Text>
+</TouchableOpacity>
+
+</View>
+
+</View>
+</View>
+</Modal>
     </View>
   );
 }
 const styles = StyleSheet.create({
+  overlay: {
+  flex: 1,
+  backgroundColor: "rgba(0,0,0,0.45)",
+  justifyContent: "center",
+  alignItems: "center",
+  paddingHorizontal: 40,
+},
+discountBtn: {
+    backgroundColor: "#FF9800",
+    paddingVertical: 14,
+    borderRadius: 14,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 12,
+},
+
+discountText: {
+    color: "#fff",
+    fontSize: 16,
+    fontFamily: fonts.bold,
+    marginLeft: 8,
+},
+discountCard: {
+  width: "90%",
+  backgroundColor: "#FFF",
+  borderRadius: 20,
+  padding: 22,
+},
+
+modalTitle: {
+  fontSize: 30,
+  fontFamily: fonts.bold,
+  color: "#111",
+  marginBottom: 25,
+},
+
+label: {
+  fontSize: 18,
+  fontFamily: fonts.bold,
+  color: "#111",
+  marginBottom: 10,
+  marginTop: 15,
+},
+
+typeRow: {
+  flexDirection: "row",
+  justifyContent: "space-between",
+  marginBottom: 12,
+},
+
+typeBtn: {
+  width: "48%",
+  height: 52,
+  borderRadius: 12,
+  borderWidth: 1,
+  borderColor: "#D9D9D9",
+  justifyContent: "center",
+  alignItems: "center",
+  backgroundColor: "#FFF",
+},
+
+typeText: {
+  fontSize: 18,
+  color: "#222",
+  fontFamily: fonts.medium,
+},
+
+selectedType: {
+  backgroundColor: colors.primary,
+  borderColor: colors.primary,
+},
+
+selectedTypeText: {
+  color: "#FFF",
+  fontFamily: fonts.bold,
+},
+
+input2: {
+  height: 54,
+  borderWidth: 1,
+  borderColor: "#D9D9D9",
+  borderRadius: 12,
+  paddingHorizontal: 16,
+  fontSize: 18,
+  fontFamily:fonts.medium,
+  backgroundColor: "#FFF",
+  color: "#222",
+},
+
+reasonInput: {
+  height: 100,
+  textAlignVertical: "top",
+  paddingTop: 10,
+},
+
+btnRow2: {
+  flexDirection: "row",
+  justifyContent: "flex-end",
+  alignItems: "center",
+  marginTop: 28,
+},
+
+cancelBtn1: {
+  height: 47,
+  minWidth: 110,
+  borderRadius: 12,
+  borderWidth: 1,
+  borderColor: "#D9D9D9",
+  justifyContent: "center",
+  alignItems: "center",
+  marginRight: 12,
+  backgroundColor: "#FFF",
+},
+
+cancelText: {
+  fontSize: 18,
+  color: "#333",
+  fontFamily: fonts.medium,
+},
+
+saveBtn: {
+  height: 50,
+  minWidth: 120,
+  borderRadius: 12,
+  justifyContent: "center",
+  alignItems: "center",
+  backgroundColor: colors.primary,
+},
+
+saveText: {
+  color: "#FFF",
+  fontSize: 18,
+  fontFamily: fonts.bold,
+},
   container: {
     flex: 1,
     backgroundColor: '#f4f6f9',

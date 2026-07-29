@@ -3,8 +3,22 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { logger } from "../Utils/logger";
 
 export const api = axios.create({
+   
   //live_url
   baseURL: 'https://jkans.cnxhub.in/api', 
+
+  //jkans demo
+  //baseURL:"https://jkansfoods.sarasbillingpro.com/api",
+
+  
+  //taven house demo
+  //baseURL:'https://taven.sarasbillingpro.com/api',
+
+  //taven house -->live
+  //baseURL:"https://taven.cnxhub.in/api",
+
+  //Sarasbilling
+  //baseURL:'https://restaurant.sarasbillingpro.com/api',
 
   //dev_url
    //baseURL: 'https://jkansfoods.sarasbillingpro.com/api',
@@ -32,7 +46,9 @@ api.interceptors.request.use(
       } else {
         config.headers["Content-Type"] = "application/json";
       }
+ const fullUrl = `${config.baseURL}${config.url}`;
 
+      console.log("====================================",fullUrl);
       // Debug Logs
       logger.log("API", "request", config.method?.toUpperCase(), config.url);
 

@@ -74,8 +74,10 @@ const wrapCenter = (text = "", maxWidth = TOTAL_WIDTH, isBold = false) => {
     })
     .join("");
 };
-
 const leftRight = (left = "", right = "") => {
+  left = String(left ?? "");
+  right = String(right ?? "");
+
   const maxRight = 15;
 
   if (right.length > maxRight) {
@@ -83,8 +85,19 @@ const leftRight = (left = "", right = "") => {
   }
 
   const space = TOTAL_WIDTH - (left.length + right.length);
-  return left + " ".repeat(space > 0 ? space : 1) + right + "\n";
+
+  return left + " ".repeat(Math.max(space, 1)) + right + "\n";
 };
+// const leftRight = (left = "", right = "") => {
+//   const maxRight = 15;
+
+//   if (right.length > maxRight) {
+//     right = right.substring(0, maxRight);
+//   }
+
+//   const space = TOTAL_WIDTH - (left.length + right.length);
+//   return left + " ".repeat(space > 0 ? space : 1) + right + "\n";
+// };
 
 const LINE = "-".repeat(TOTAL_WIDTH) + "\n";
 
@@ -156,46 +169,119 @@ if (location?.name) {
   });
 
   bill += LINE;
+const subTotal = Number(billedData?.taxable_amount || 0);
+const discount = Number(billedData?.discount_amount || 0);
+const afterDiscount = Number(billedData?.total_after_discount || subTotal);
+const total = Number(billedData?.grand_total || 0);
 
-  const subTotal = Number(billedData?.taxable_amount || 0);
-  const total = Number(billedData?.grand_total || 0);
+const hasGST = billedData?.gst_applied === true;
 
-  const hasGST = billedData?.gst_applied === true;
+bill += `Qty : ${billedData?.items_count || order.items.length}\n`;
 
-  bill += `Qty : ${billedData?.items_count || order.items.length}\n`;
-  bill += leftRight("SubTotal", subTotal.toFixed(2));
+bill += leftRight("Sub Total", subTotal.toFixed(2));
 
-  if (hasGST) {
+// Discount
+if (discount > 0) {
+   if (billedData?.discount_type === "percentage") {
+
+    const percentage =
+      billedData?.discount_percentage ??
+      ((discount / subTotal) * 100).toFixed(2);
+
     bill += leftRight(
-      `CGST ${billedData?.cgst_percentage || 0}%`,
-      Number(billedData?.cgst_amount || 0).toFixed(2)
+      `Discount (${percentage}%)`,
+      `-₹${discount.toFixed(2)}`
     );
 
+  } else {
+
     bill += leftRight(
-      `SGST ${billedData?.sgst_percentage || 0}%`,
-      Number(billedData?.sgst_amount || 0).toFixed(2)
+      "Discount",
+      `-₹${discount.toFixed(2)}`
     );
+
   }
 
-  bill += LINE;
+  // if (billedData?.discount_reason) {
+  //   bill += leftRight(
+  //     "Reason",
+  //     billedData.discount_reason
+  //   );
+  // }
 
+//  bill += leftRight(
+//   "Reason",
+//   billedData.discount_reason || "-"
+// );
+}
+
+// GST Split
+if (hasGST) {
+  bill += leftRight(
+    `CGST ${billedData?.cgst_percentage || 0}%`,
+    Number(billedData?.cgst_amount || 0).toFixed(2)
+  );
+
+  bill += leftRight(
+    `SGST ${billedData?.sgst_percentage || 0}%`,
+    Number(billedData?.sgst_amount || 0).toFixed(2)
+  );
+
+  bill += leftRight(
+    "Total GST",
+    Number(billedData?.total_tax || 0).toFixed(2)
+  );
+}
+
+bill += LINE;
+  // const subTotal = Number(billedData?.taxable_amount || 0);
+  // const total = Number(billedData?.grand_total || 0);
+
+  // const hasGST = billedData?.gst_applied === true;
+
+  // bill += `Qty : ${billedData?.items_count || order.items.length}\n`;
+  // bill += leftRight("SubTotal", subTotal.toFixed(2));
+
+  // if (hasGST) {
+  //   bill += leftRight(
+  //     `CGST ${billedData?.cgst_percentage || 0}%`,
+  //     Number(billedData?.cgst_amount || 0).toFixed(2)
+  //   );
+
+  //   bill += leftRight(
+  //     `SGST ${billedData?.sgst_percentage || 0}%`,
+  //     Number(billedData?.sgst_amount || 0).toFixed(2)
+  //   );
+  // }
+
+  // bill += LINE;
+
+
+
+// TOTAL
 bill += COMMANDS.TEXT_FORMAT.TXT_ALIGN_CT;
+bill += COMMANDS.TEXT_FORMAT.TXT_2HEIGHT;
+bill += COMMANDS.TEXT_FORMAT.TXT_2WIDTH;
 
-  bill += COMMANDS.TEXT_FORMAT.TXT_2HEIGHT;
-  bill += COMMANDS.TEXT_FORMAT.TXT_2WIDTH;
-  bill += COMMANDS.TEXT_FORMAT.TXT_BOLD_ON;
-
-bill += `TOTAL Rs. ${total.toFixed(2)}\n`;
-
+bill += COMMANDS.TEXT_FORMAT.TXT_BOLD_ON;
+bill += `Rs. ${total.toFixed(2)}\n`;
 bill += COMMANDS.TEXT_FORMAT.TXT_BOLD_OFF;
-  bill += COMMANDS.TEXT_FORMAT.TXT_NORMAL;
-  bill += COMMANDS.TEXT_FORMAT.TXT_ALIGN_LT;
-  bill += LINE;
 
-  bill += centerText("!! THANK YOU VISIT AGAIN !!");
-  bill += centerText("Powered by SaraS");
+bill += COMMANDS.TEXT_FORMAT.TXT_NORMAL;
+bill += COMMANDS.TEXT_FORMAT.TXT_ALIGN_LT;
 
-  bill += "\n\n\n";
+// Footer
+bill += centerText("Greatful To have Your Valuable review");
+
+bill += COMMANDS.TEXT_FORMAT.TXT_BOLD_ON;
+bill += centerText("!! THANK YOU! VISIT AGAIN !!");
+bill += COMMANDS.TEXT_FORMAT.TXT_BOLD_OFF;
+
+// bill += centerText("Powered by SaraS");
+
+bill += COMMANDS.TEXT_FORMAT.TXT_ALIGN_LT;
+
+bill += "\n\n\n";
 
   return bill;
 };

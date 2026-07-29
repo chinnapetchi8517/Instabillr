@@ -68,7 +68,24 @@ const [selectedTable, setSelectedTable] = useState(null);
     const rawProducts = getProductsRaw();
     setProducts(formatProductsForUi(rawProducts));
     const menus = getMenusRaw();
-    setSubCategories(getSubCategoriesFromMenus(menus));
+let categories = getSubCategoriesFromMenus(menus);
+
+// Move "All" to the first position
+categories = [
+  ...categories.filter(
+    item => item.name?.toLowerCase() === "all"
+  ),
+  ...categories.filter(
+    item => item.name?.toLowerCase() !== "all"
+  ),
+];
+
+setSubCategories(categories);
+
+// Select "All" by default
+if (categories.length > 0) {
+  setSelectedSubCategoryId(categories[0].category_id);
+}
     setTables(formatTablesForUi(getTablesRaw()));
   };
 
@@ -116,19 +133,28 @@ const [selectedTable, setSelectedTable] = useState(null);
   // =========================
   // 🔍 FILTER
   // =========================
-  const filteredData = products.filter(item => {
-    const searchText = search.trim().toLowerCase();
+ const selectedCategory = subCategories.find(
+  c => c.category_id == selectedSubCategoryId
+);
 
-    const matchSearch =
-      item.name?.toLowerCase().includes(searchText) ||
-      item.sku?.includes(searchText);
+const isAllCategory =
+  selectedCategory?.name?.toLowerCase() === "all";
 
-    const matchSubCategory =
-      !selectedSubCategoryId ||
-      Number(item.sub_category_id) === Number(selectedSubCategoryId);
+const filteredData = products.filter(item => {
+  const searchText = search.trim().toLowerCase();
 
-    return matchSearch && matchSubCategory;
-  });
+  const matchSearch =
+    item.name?.toLowerCase().includes(searchText) ||
+    item.sku?.includes(searchText);
+
+  const matchSubCategory =
+    isAllCategory ||
+    !selectedSubCategoryId ||
+    item.sub_category_id == selectedSubCategoryId;
+
+  return matchSearch && matchSubCategory;
+
+});
 
  const addItem = item => {
   const exists = cart.find(i => i.id === item.id);
@@ -513,6 +539,7 @@ setTimeout(async () => {
       },
       userName,
       tableName,
+      false
     );
   } catch (err) {
     console.log('❌ PRINT ERROR:', err);
@@ -661,6 +688,7 @@ setTimeout(async () => {
       },
       userName,
       tableName,
+      true
     );
   } catch (err) {
     console.log('❌ PRINT ERROR:', err);
@@ -911,13 +939,13 @@ const updateRemark = (id, text) => {
           style={styles.input}
         />
       </View>
-      <View style={{ flex: 1 }}>
+      <View style={{ flex: 1}}>
 
       <FlatList
         data={subCategories}
         horizontal
         showsHorizontalScrollIndicator={false}
-        style={{ marginHorizontal: wp('3%'), marginBottom: hp('1%'), }}
+        style={{ marginHorizontal: wp('3%')}}
         keyExtractor={(item, index) =>
           item?.category_id ? item.category_id.toString() : index.toString()
         }
@@ -940,15 +968,20 @@ const updateRemark = (id, text) => {
             </Text>
           </TouchableOpacity>
         )}
+         
       />
 
       {/* 🍽️ LIST */}
       {filteredData.length > 0 ? (
 
         <FlatList
+        style={{
+    marginTop: hp("2%"),
+  }}
+        // style={{marginTop:-98}}
           key={selectedSubCategoryId}
           data={filteredData}
-          contentContainerStyle={{ paddingBottom: hp('15%') }}
+          contentContainerStyle={{ paddingBottom: hp('1%') }}
 //style={{ flex: 1 }}
           extraData={selectedSubCategoryId}
           keyExtractor={(item, index) =>
@@ -1221,7 +1254,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: wp('4%'),
     backgroundColor: '#fff',
     borderRadius: 4,
-    height: hp('5%'),
+    height: hp('6%'),
     padding: 8,
     marginRight: wp('2%'),
     //marginBottom: hp("1%"),
@@ -1391,6 +1424,7 @@ const styles = StyleSheet.create({
     fontFamily: fonts.medium,
     fontSize: wp('3.5%'),
     color: '#333',
+    marginTop: 10,
   },
   input1: {
     borderWidth: 1,

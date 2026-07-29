@@ -24,6 +24,7 @@ export const ApiService = {
 
   getProducts: async (config = {}) => {
     const response = await api.get('/products', config);
+     console.log(response,"product");
     return response.data;
   },
 
@@ -48,10 +49,18 @@ export const ApiService = {
   },
 
   // Generate bill
-  generateBill: async (orderId, config = {}) => {
-    const response = await api.post(`/order/${orderId}/bill`, undefined, config);
-    return response.data;
-  },
+  // generateBill: async (orderId, config = {}) => {
+  //   const response = await api.post(`/order/${orderId}/bill`, undefined, config);
+  //   return response.data;
+  // },
+  generateBill: async (orderId, billData = {}, config = {}) => {
+  const response = await api.post(
+    `/order/${orderId}/bill`,
+    billData,
+    config
+  );
+  return response.data;
+},
 
   // Cancel order
   cancelOrder: async (orderId, data, config = {}) => {
@@ -103,6 +112,8 @@ export const ApiService = {
   },
   getCategories:async (config = {}) => {
     const response = await api.get(`/categories`, config);
+    console.log(response,"responseresponseresponseresponse");
+    
     return response.data;
   },
   changepassword:async(data, config = {})=>{
