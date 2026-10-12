@@ -88,7 +88,15 @@ export default function LoginScreen({ navigation }) {
       const newBranchId = String(
         res?.permitted_locations?.[0]?.location_id || ""
       );
+//        const location = res?.permitted_locations?.[0];
+//  const billingPrinterIP =
+//       location.billing_printer_ip || '';
 
+//     const defaultKOTPrinterIP =
+//       location.default_kot_ip || '';
+
+//     const systemIP =
+//       location.system_ip || '';
       // =========================
       // CHECK BRANCH CHANGED
       // =========================
@@ -146,7 +154,18 @@ export default function LoginScreen({ navigation }) {
           res?.permitted_locations || []
         )
       );
+    //    if (billingPrinterIP) {
+    //   await AsyncStorage.setItem(
+    //     'BILL_PRINTER_IP',
+    //     billingPrinterIP,
+    //   );
 
+    //   // Optional lowercase key if your billing code uses it
+    //   await AsyncStorage.setItem(
+    //     'billing_printer_ip',
+    //     billingPrinterIP,
+    //   );
+    // }
       await AsyncStorage.setItem(
         "branch_id",
         newBranchId

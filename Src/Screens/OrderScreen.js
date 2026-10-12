@@ -34,6 +34,7 @@ import QueueMonitorBadge from '../Components/QueueMonitorBadge';
 import requestManager from '../Utils/requestManager';
 import { logger } from '../Utils/logger';
 import { getTablesRaw, formatTablesForUi } from '../Database/catalogDb';
+import { printKOT } from '../Utils/Printer';
 import {
   CATALOG_SYNCED_EVENT,
   refreshTablesCacheFromNetwork,
@@ -257,6 +258,52 @@ useEffect(() => {
     sub.remove();
   };
 }, [hydrateTablesFromLocal]);
+// useEffect(() => {
+//   const getUser = async () => {
+//     try {
+//       const userData = await AsyncStorage.getItem('user');
+//       const stored = await AsyncStorage.getItem('address');
+
+//       const locations = stored
+//         ? JSON.parse(stored)
+//         : [];
+
+//       const selectedLocation = locations?.[0] || {};
+
+//       if (userData) {
+//         const parsed = JSON.parse(userData);
+
+//         setUserName(
+//           parsed?.username || parsed?.name || '',
+//         );
+//       }
+
+//       setLocation(selectedLocation);
+
+//       console.log(
+//         '📍 LOCATION =>',
+//         JSON.stringify(selectedLocation, null, 2),
+//       );
+
+//       console.log(
+//         '🧾 BILLING PRINTER =>',
+//         selectedLocation?.billing_printer_ip,
+//       );
+
+//       console.log(
+//         '🍳 DEFAULT KOT PRINTER =>',
+//         selectedLocation?.default_kot_ip,
+//       );
+//     } catch (error) {
+//       console.log(
+//         '❌ GET USER/LOCATION ERROR =>',
+//         error,
+//       );
+//     }
+//   };
+
+//   getUser();
+// }, []);
   useEffect(() => {
     const getUser = async () => {
       const userData = await AsyncStorage.getItem('user');
@@ -462,7 +509,129 @@ const processBill = async (item, id) => {
       ],
     );
   };
+// const handleBill = async (item, id) => {
+//   Alert.alert(
+//     'Generate Bill',
+//     'Are you sure you want to generate this bill?',
+//     [
+//       {
+//         text: 'Cancel',
+//         style: 'cancel',
+//       },
+//       {
+//         text: 'Yes',
+//         onPress: async () => {
+//           try {
+//             // ==================================
+//             // GET BILLING PRINTER FROM LOCATION
+//             // ==================================
+//             let savedIP =
+//               location?.billing_printer_ip;
 
+//             // ==================================
+//             // FALLBACK TO STORAGE
+//             // ==================================
+//             if (!savedIP) {
+//               savedIP =
+//                 await AsyncStorage.getItem(
+//                   'BILL_PRINTER_IP',
+//                 );
+//             }
+
+//             console.log(
+//               '🧾 BILL PRINTER IP =>',
+//               savedIP,
+//             );
+
+//             // ==================================
+//             // NO PRINTER CONFIGURED
+//             // ==================================
+//             if (!savedIP) {
+//               setPendingOrder({
+//                 item,
+//                 id,
+//               });
+
+//               setIpModal(true);
+//               return;
+//             }
+
+//             // ==================================
+//             // PROCESS BILL
+//             // ==================================
+//             await processBill(item, id);
+//           } catch (error) {
+//             console.log(
+//               '❌ BILL HANDLER ERROR =>',
+//               error,
+//             );
+
+//             Toast.show({
+//               type: 'error',
+//               text1: 'Billing failed',
+//               text2:
+//                 error?.message ||
+//                 'Unable to generate bill',
+//             });
+//           }
+//         },
+//       },
+//     ],
+//   );
+// };
+// const handleSaveIP = async () => {
+//   try {
+//     if (!printerIP?.trim()) {
+//       Alert.alert(
+//         'Validation',
+//         'Please enter printer IP',
+//       );
+//       return;
+//     }
+
+//     const ip = printerIP.trim();
+
+//     await saveBillPrinterIP(ip);
+
+//     // Keep storage consistent
+//     await AsyncStorage.setItem(
+//       'BILL_PRINTER_IP',
+//       ip,
+//     );
+
+//     await AsyncStorage.setItem(
+//       'billing_printer_ip',
+//       ip,
+//     );
+
+//     // Update local location state
+//     setLocation(prev => ({
+//       ...prev,
+//       billing_printer_ip: ip,
+//     }));
+
+//     setIpModal(false);
+//     setPrinterIP('');
+
+//     if (pendingOrder) {
+//       const { item, id } = pendingOrder;
+
+//       setPendingOrder(null);
+
+//       await processBill(item, id);
+//     }
+//   } catch (error) {
+//     console.log(
+//       '❌ SAVE BILL PRINTER ERROR =>',
+//       error,
+//     );
+
+//     Alert.alert(
+//       'Error',
+//       'Failed to save printer IP',
+//     );
+//   }
+// };
   // =========================
   // After saving IP
   // =========================
@@ -480,30 +649,38 @@ const processBill = async (item, id) => {
   };
 
   const groupItems = items => {
-    const map = new Map();
+  const map = new Map();
 
-    items.forEach(i => {
-      const key = i.product_id + '_' + i.variation_id;
+  (items || []).forEach(i => {
+    const key = `${i.product_id}_${i.variation_id}`;
 
-      if (!map.has(key)) {
-        map.set(key, {
-          product_name: i.product_name,
-          qty: Number(i.qty),
-          price: Number(i.unit_price_inc_tax),
-          total: Number(i.unit_price_inc_tax) * Number(i.qty),
-        });
-      } else {
-        // ❗ prevent double addition issue
-        const existing = map.get(key);
+    if (!map.has(key)) {
+      const qty = Number(i.qty || 0);
+      const price = Number(i.unit_price_inc_tax || 0);
 
-        // take latest qty instead of adding
-        existing.qty = Number(i.qty);
-        existing.total = existing.qty * existing.price;
-      }
-    });
+      map.set(key, {
+        ...i,
+        product_name: i.product_name,
+        qty,
+        price,
+        total: price * qty,
+      });
+    } else {
+      const existing = map.get(key);
 
-    return Array.from(map.values());
-  };
+      const qty = Number(i.qty || 0);
+
+      // ✅ ADD quantity
+      existing.qty += qty;
+
+      // ✅ Recalculate total
+      existing.total =
+        existing.qty * existing.price;
+    }
+  });
+
+  return Array.from(map.values());
+};
 
   const mergeItems = items => {
     const map = {};
@@ -598,57 +775,231 @@ const processBill = async (item, id) => {
     return editItems.reduce((sum, item) => sum + item.qty * item.price, 0);
   };
   const handleUpdateOrder = async () => {
-    try {
-      if (editItems.length === 0) {
-        Alert.alert('Error', 'Order must have at least 1 item');
-        return;
-      }
+  try {
+    if (!editOrderId) {
+      Alert.alert('Error', 'Order ID is missing');
+      return;
+    }
 
-      // ✅ remove deleted items from original list
-      const filteredItems = originalItems.filter(
-        item => !deletedItems.includes(item.item_id),
+    if (editItems.length === 0) {
+      Alert.alert('Error', 'Order must have at least 1 item');
+      return;
+    }
+
+    // ==========================================
+    // 1. REMOVE DELETED ITEMS
+    // ==========================================
+    const filteredItems = originalItems.filter(
+      item => !deletedItems.includes(item.item_id),
+    );
+
+    // ==========================================
+    // 2. CREATE FINAL ITEMS
+    // ==========================================
+    const finalItems = filteredItems.map(origItem => {
+      const edited = editItems.find(
+        e => e.item_id === origItem.item_id,
       );
 
-      // ✅ merge with edited items (updated qty)
-      const finalItems = filteredItems.map(origItem => {
-        const edited = editItems.find(e => e.item_id === origItem.item_id);
-
-        return {
-          item_id: origItem.item_id,
-          product_id: origItem.product_id,
-          variation_id: origItem.variation_id,
-          qty: edited ? edited.qty : origItem.qty, //  updated or original
-          unit_price_inc_tax: origItem.price,
-        };
-      });
-
-      const payload = {
-        table_id: editMeta.table_id,
-        chair_no: editMeta.chair_no,
-        order_type: editMeta.order_type,
-        items: finalItems, // cleaned list
+      return {
+        item_id: origItem.item_id,
+        product_id: origItem.product_id,
+        variation_id: origItem.variation_id,
+        qty: edited ? edited.qty : origItem.qty,
+        unit_price_inc_tax: origItem.price,
       };
+    });
 
-      //console.log('FINAL PAYLOAD 👉', payload);
+    // ==========================================
+    // 3. API PAYLOAD
+    // ==========================================
+    const payload = {
+      table_id: editMeta.table_id,
+      chair_no: editMeta.chair_no,
+      order_type: editMeta.order_type,
+      items: finalItems,
+    };
 
-      const res = await safeApiCall(({ signal }={}) => ApiService.orderUpdate(editOrderId, payload, { signal }), {
+    console.log(
+      '✏️ UPDATE ORDER ID:',
+      editOrderId,
+    );
+
+    console.log(
+      '✏️ UPDATE PAYLOAD:',
+      JSON.stringify(payload, null, 2),
+    );
+
+    // ==========================================
+    // 4. UPDATE EXISTING ORDER
+    // ==========================================
+    const res = await safeApiCall(
+      ({ signal } = {}) =>
+        ApiService.orderUpdate(
+          editOrderId,
+          payload,
+          { signal },
+        ),
+      {
         source: 'OrderScreen.handleUpdateOrder',
-      });
+      },
+    );
 
-      if (res.status) {
-        await fetchOrderList();
+    console.log(
+      '✏️ UPDATE ORDER RESPONSE:',
+      JSON.stringify(res, null, 2),
+    );
 
-        setDeletedItems([]);
-        setEditModalVisible(false);
-
-        Alert.alert('Success', 'Order updated');
-      } else {
-        Alert.alert('Error', res.message);
-      }
-    } catch (err) {
-      Alert.alert('Error', 'Update failed');
+    // ==========================================
+    // 5. CHECK API RESPONSE
+    // ==========================================
+    if (!res?.status) {
+      Alert.alert(
+        'Error',
+        res?.message || 'Order update failed',
+      );
+      return;
     }
-  };
+
+    // ==========================================
+    // 6. GET UPDATED ORDER + KOT
+    // ==========================================
+    const updatedOrder = res?.data;
+    const kot = res?.kot;
+
+    console.log(
+      '✅ UPDATED ORDER:',
+      JSON.stringify(updatedOrder, null, 2),
+    );
+
+    console.log(
+      '🖨️ EDIT ORDER KOT:',
+      JSON.stringify(kot, null, 2),
+    );
+
+    // ==========================================
+    // 7. THIS IS ALWAYS A RUNNING/EDIT ORDER
+    // ==========================================
+    const isRunningOrder = true;
+
+    // ==========================================
+    // 8. CLOSE EDIT MODAL
+    // ==========================================
+    setDeletedItems([]);
+    setEditModalVisible(false);
+
+    // ==========================================
+    // 9. REFRESH ORDERS
+    // ==========================================
+    await fetchOrderList();
+
+    refreshTablesCacheFromNetwork().catch(() => {});
+
+    // ==========================================
+    // 10. PRINT KOT
+    // ==========================================
+    if (
+      kot?.groups?.length > 0 &&
+      updatedOrder
+    ) {
+      try {
+        await printKOTGroups(
+          kot,
+          updatedOrder,
+          tableName,
+          isRunningOrder,
+        );
+
+        Toast.show({
+          type: 'success',
+          text1: 'Order updated successfully',
+          text2: 'KOT sent to printer',
+          position: 'bottom',
+        });
+      } catch (printError) {
+        console.log(
+          '❌ EDIT ORDER PRINT ERROR:',
+          printError,
+        );
+
+        Toast.show({
+          type: 'error',
+          text1: 'Order updated',
+          text2: 'Printer unavailable',
+          position: 'bottom',
+        });
+      }
+    } else {
+      Toast.show({
+        type: 'success',
+        text1: 'Order updated successfully',
+        position: 'bottom',
+      });
+    }
+  } catch (err) {
+    console.log(
+      '❌ UPDATE ORDER ERROR:',
+      err,
+    );
+
+    Alert.alert(
+      'Error',
+      err?.message || 'Update failed',
+    );
+  }
+};
+  // const handleUpdateOrder = async () => {
+  //   try {
+  //     if (editItems.length === 0) {
+  //       Alert.alert('Error', 'Order must have at least 1 item');
+  //       return;
+  //     }
+
+  //     // ✅ remove deleted items from original list
+  //     const filteredItems = originalItems.filter(
+  //       item => !deletedItems.includes(item.item_id),
+  //     );
+
+  //     // ✅ merge with edited items (updated qty)
+  //     const finalItems = filteredItems.map(origItem => {
+  //       const edited = editItems.find(e => e.item_id === origItem.item_id);
+
+  //       return {
+  //         item_id: origItem.item_id,
+  //         product_id: origItem.product_id,
+  //         variation_id: origItem.variation_id,
+  //         qty: edited ? edited.qty : origItem.qty, //  updated or original
+  //         unit_price_inc_tax: origItem.price,
+  //       };
+  //     });
+
+  //     const payload = {
+  //       table_id: editMeta.table_id,
+  //       chair_no: editMeta.chair_no,
+  //       order_type: editMeta.order_type,
+  //       items: finalItems, // cleaned list
+  //     };
+
+  //     //console.log('FINAL PAYLOAD 👉', payload);
+
+  //     const res = await safeApiCall(({ signal }={}) => ApiService.orderUpdate(editOrderId, payload, { signal }), {
+  //       source: 'OrderScreen.handleUpdateOrder',
+  //     });
+
+  //     if (res.status) {
+  //       await fetchOrderList();
+
+  //       setDeletedItems([]);
+  //       setEditModalVisible(false);
+
+  //       Alert.alert('Success', 'Order updated');
+  //     } else {
+  //       Alert.alert('Error', res.message);
+  //     }
+  //   } catch (err) {
+  //     Alert.alert('Error', 'Update failed');
+  //   }
+  // };
   const renderTable = ({ item }) => {
     const isBusy = item.status !== 'available';
 
@@ -717,6 +1068,61 @@ const processBill = async (item, id) => {
       },
     ]);
   };
+  const printKOTGroups = async (kot, orderData, tableName,isRunningOrder) => {
+    if (!kot?.groups?.length) {
+      console.log('⚠️ No KOT printer groups');
+      return;
+    }
+  
+    console.log(
+      '🖨️ KOT GROUPS:',
+      JSON.stringify(kot.groups, null, 2),
+    );
+  
+    for (const group of kot.groups) {
+      const printerIP = group?.printer_ip;
+      const printerPort = Number(group?.printer_port || 9100);
+      const items = group?.items || [];
+  
+      if (!printerIP || !items.length) {
+        continue;
+      }
+  
+      try {
+        console.log(
+          `🖨️ Printing ${items.length} items → ${printerIP}:${printerPort}`,
+        );
+  
+        await printKOT(
+          {
+            ...orderData,
+            items,
+            token_no: kot.token_no || orderData.token_no,
+            printer_ip: printerIP,
+            printer_port: printerPort,
+          },
+          userName,
+          tableName,
+          isRunningOrder,
+        );
+  
+        console.log(`✅ Printed → ${printerIP}`);
+      } catch (error) {
+        console.log(
+          `❌ Printer failed → ${printerIP}`,
+          error,
+        );
+  
+        Toast.show({
+          type: 'error',
+          text1: 'Printer unavailable',
+          text2: `${printerIP} failed`,
+          position: 'bottom',
+        });
+      }
+    }
+  };
+
   // =========================
   // Render Order Card
   // =========================
@@ -738,6 +1144,7 @@ if (discount) {
       (finalTotal * discount.discount_amount) / 100;
   }
 }
+
     return (
       <View style={styles.card}>
         {/* Header with Status */}

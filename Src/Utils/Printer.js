@@ -1,175 +1,95 @@
-import { NetPrinter } from "@eerengine/react-native-thermal-receipt-printer-image-qr";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+// import { NetPrinter } from "@eerengine/react-native-thermal-receipt-printer-image-qr";
+// import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const PRINTER_IP_KEY = "PRINTER_IP";
-const TOTAL_WIDTH = 48;
+// const PRINTER_IP_KEY = "PRINTER_IP";
+// const TOTAL_WIDTH = 48;
 
-const IS_MOCK = false;
+// const IS_MOCK = false;
 
-// ✅ TIMEOUT CONFIG
-const CONNECT_TIMEOUT = 4000;
-const PRINT_TIMEOUT = 5000;
-const AUTO_CLOSE_DELAY = 1500;
+// // ✅ TIMEOUT CONFIG
+// const CONNECT_TIMEOUT = 4000;
+// const PRINT_TIMEOUT = 5000;
+// const AUTO_CLOSE_DELAY = 1500;
 
-const BOLD_ON = "\x1B\x45\x01";
-const BOLD_OFF = "\x1B\x45\x00";
+// const BOLD_ON = "\x1B\x45\x01";
+// const BOLD_OFF = "\x1B\x45\x00";
 
-const SMALL_TEXT = "\x1B\x4D\x01";
-const NORMAL_TEXT = "\x1B\x4D\x00";
+// const SMALL_TEXT = "\x1B\x4D\x01";
+// const NORMAL_TEXT = "\x1B\x4D\x00";
 
-// ===============================
-// GLOBALS
-// ===============================
-let printQueue = [];
-let isPrinting = false;
-let isLocked = false;
+// // ===============================
+// // GLOBALS
+// // ===============================
+// let printQueue = [];
+// let isPrinting = false;
+// let isLocked = false;
 
-// ===============================
-// STORAGE
-// ===============================
-export const savePrinterIP = async (ip) => {
-  await AsyncStorage.setItem(PRINTER_IP_KEY, ip);
-};
+// // ===============================
+// // STORAGE
+// // ===============================
+// export const savePrinterIP = async (ip) => {
+//   await AsyncStorage.setItem(PRINTER_IP_KEY, ip);
+// };
 
-export const getPrinterIP = async () => {
-  return await AsyncStorage.getItem(PRINTER_IP_KEY);
-};
+// export const getPrinterIP = async () => {
+//   return await AsyncStorage.getItem(PRINTER_IP_KEY);
+// };
 
-// ===============================
-// TIMEOUT WRAPPER
-// ===============================
-const withTimeout = (promise, ms, label = "Operation") => {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) =>
-      setTimeout(() => {
-        reject(new Error(`${label} timeout after ${ms}ms`));
-      }, ms)
-    ),
-  ]);
-};
+// // ===============================
+// // TIMEOUT WRAPPER
+// // ===============================
+// const withTimeout = (promise, ms, label = "Operation") => {
+//   return Promise.race([
+//     promise,
+//     new Promise((_, reject) =>
+//       setTimeout(() => {
+//         reject(new Error(`${label} timeout after ${ms}ms`));
+//       }, ms)
+//     ),
+//   ]);
+// };
 
-// ===============================
-// HELPERS
-// ===============================
-const centerText = (text = "") => {
-  const space = Math.max(0, Math.floor((TOTAL_WIDTH - text.length) / 2));
-  return " ".repeat(space) + text + "\n";
-};
+// // ===============================
+// // HELPERS
+// // ===============================
+// const centerText = (text = "") => {
+//   const space = Math.max(0, Math.floor((TOTAL_WIDTH - text.length) / 2));
+//   return " ".repeat(space) + text + "\n";
+// };
 
-const leftRight = (left = "", right = "") => {
-  const space = TOTAL_WIDTH - (left.length + right.length);
-  return left + " ".repeat(space > 0 ? space : 1) + right + "\n";
-};
+// const leftRight = (left = "", right = "") => {
+//   const space = TOTAL_WIDTH - (left.length + right.length);
+//   return left + " ".repeat(space > 0 ? space : 1) + right + "\n";
+// };
 
-const LINE = "-".repeat(TOTAL_WIDTH) + "\n";
+// const LINE = "-".repeat(TOTAL_WIDTH) + "\n";
 
-// ===============================
-// BUILD KOT
-// ===============================
-const buildKOT = (
-  order,
-  userName,
-  tableName,
-  isRunningOrder = false
-) => {
-  let txt = "";
-
-  const d = new Date();
-
-  txt += "\n";
-
-  // ===============================
-  // HEADER
-  // ===============================
-  txt += BOLD_ON;
-  txt += centerText("KITCHEN ORDER TICKET");
-  txt += BOLD_OFF;
-if (isRunningOrder) {
-  txt += BOLD_ON;
-  txt += centerText("RUNNING ORDER");
-  txt += BOLD_OFF;
-}
-  txt += leftRight(
-    `Date : ${d.toLocaleDateString("en-GB")}`,
-    `Time : ${d.toLocaleTimeString()}`
-  );
-
-  txt += BOLD_ON;
-  txt += `Waiter : ${userName || "N/A"}\n`;
-  txt += BOLD_OFF;
-
-  txt += LINE;
-
-  // ===============================
-  // ITEMS
-  // ===============================
-  txt += "No    Name                         Qty\n";
-  txt += LINE;
-
-  const NAME_WIDTH = 30;
-
-  order.items.forEach((item, i) => {
-    let name = item.product_name || "";
-
-    if (name.length > NAME_WIDTH) {
-      name = name.substring(0, NAME_WIDTH - 2) + "..";
-    }
-
-    txt +=
-      `${String(i + 1).padEnd(6)}` +
-      `${name.padEnd(30)}` +
-      `${parseFloat(item.qty || 0)
-        .toFixed(0)
-        .padStart(12)}\n`;
-
-    if (item.remarks?.trim()) {
-      txt += SMALL_TEXT;
-      txt += `      * ${item.remarks}\n`;
-      txt += NORMAL_TEXT;
-    }
-  });
-
-  txt += LINE;
-
-  // ===============================
-  // FOOTER
-  // ===============================
-  txt += "\n";
-
-  txt += leftRight(
-    `KOT : ${order.id}`,
-    `TABLE : ${tableName}`
-  );
-
-  
-
-  txt += LINE;
-
-  txt += centerText("*** THANK YOU ***");
-
-  txt += "\n\n\n";
-
-  return txt;
-};
-// const buildKOT = (order, userName, tableName,isRunningOrder = false) => {
+// // ===============================
+// // BUILD KOT
+// // ===============================
+// const buildKOT = (
+//   order,
+//   userName,
+//   tableName,
+//   isRunningOrder = false
+// ) => {
 //   let txt = "";
 
 //   const d = new Date();
 
 //   txt += "\n";
 
+//   // ===============================
+//   // HEADER
+//   // ===============================
 //   txt += BOLD_ON;
-//   txt += centerText(`TABLE : ${tableName}`);
-  
+//   txt += centerText("KITCHEN ORDER TICKET");
 //   txt += BOLD_OFF;
 // if (isRunningOrder) {
 //   txt += BOLD_ON;
 //   txt += centerText("RUNNING ORDER");
 //   txt += BOLD_OFF;
 // }
-//   txt += `Kot No : ${order.id}\n`;
-
 //   txt += leftRight(
 //     `Date : ${d.toLocaleDateString("en-GB")}`,
 //     `Time : ${d.toLocaleTimeString()}`
@@ -180,6 +100,10 @@ if (isRunningOrder) {
 //   txt += BOLD_OFF;
 
 //   txt += LINE;
+
+//   // ===============================
+//   // ITEMS
+//   // ===============================
 //   txt += "No    Name                         Qty\n";
 //   txt += LINE;
 
@@ -201,113 +125,551 @@ if (isRunningOrder) {
 
 //     if (item.remarks?.trim()) {
 //       txt += SMALL_TEXT;
-//       txt += `       *${item.remarks}\n`;
+//       txt += `      * ${item.remarks}\n`;
 //       txt += NORMAL_TEXT;
 //     }
 //   });
 
 //   txt += LINE;
+
+//   // ===============================
+//   // FOOTER
+//   // ===============================
+//   txt += "\n";
+
+//   txt += leftRight(
+//     `KOT : ${order.id}`,
+//     `TABLE : ${tableName}`
+//   );
+
+  
+
+//   txt += LINE;
+
+//   txt += centerText("*** THANK YOU ***");
+
 //   txt += "\n\n\n";
 
 //   return txt;
 // };
+// // const buildKOT = (order, userName, tableName,isRunningOrder = false) => {
+// //   let txt = "";
 
-// ===============================
-// SAFE CONNECTION CLOSE
-// ===============================
+// //   const d = new Date();
+
+// //   txt += "\n";
+
+// //   txt += BOLD_ON;
+// //   txt += centerText(`TABLE : ${tableName}`);
+  
+// //   txt += BOLD_OFF;
+// // if (isRunningOrder) {
+// //   txt += BOLD_ON;
+// //   txt += centerText("RUNNING ORDER");
+// //   txt += BOLD_OFF;
+// // }
+// //   txt += `Kot No : ${order.id}\n`;
+
+// //   txt += leftRight(
+// //     `Date : ${d.toLocaleDateString("en-GB")}`,
+// //     `Time : ${d.toLocaleTimeString()}`
+// //   );
+
+// //   txt += BOLD_ON;
+// //   txt += `Waiter : ${userName || "N/A"}\n`;
+// //   txt += BOLD_OFF;
+
+// //   txt += LINE;
+// //   txt += "No    Name                         Qty\n";
+// //   txt += LINE;
+
+// //   const NAME_WIDTH = 30;
+
+// //   order.items.forEach((item, i) => {
+// //     let name = item.product_name || "";
+
+// //     if (name.length > NAME_WIDTH) {
+// //       name = name.substring(0, NAME_WIDTH - 2) + "..";
+// //     }
+
+// //     txt +=
+// //       `${String(i + 1).padEnd(6)}` +
+// //       `${name.padEnd(30)}` +
+// //       `${parseFloat(item.qty || 0)
+// //         .toFixed(0)
+// //         .padStart(12)}\n`;
+
+// //     if (item.remarks?.trim()) {
+// //       txt += SMALL_TEXT;
+// //       txt += `       *${item.remarks}\n`;
+// //       txt += NORMAL_TEXT;
+// //     }
+// //   });
+
+// //   txt += LINE;
+// //   txt += "\n\n\n";
+
+// //   return txt;
+// // };
+
+// // ===============================
+// // SAFE CONNECTION CLOSE
+// // ===============================
+// const safeCloseConnection = async () => {
+//   try {
+//     await Promise.race([
+//       NetPrinter.closeConn?.(),
+//       new Promise(resolve =>
+//         setTimeout(resolve, AUTO_CLOSE_DELAY)
+//       ),
+//     ]);
+
+//     console.log("🔌 CONNECTION CLOSED");
+//   } catch (e) {
+//     console.log("⚠️ CLOSE ERROR:", e);
+//   }
+// };
+
+// // ===============================
+// // EXECUTE PRINT
+// // ===============================
+// const executePrint = async (order, userName, tableName,isRunningOrder) => {
+//  const kotText = buildKOT(order, userName, tableName,isRunningOrder);
+//   console.log("🖨️ START PRINT:", order.id);
+
+//   // Mock Preview
+//   if (IS_MOCK) {
+//     console.log("========== KOT PREVIEW ==========");
+//     console.log(kotText);
+//     console.log("=================================");
+//     return true;
+//   }
+//   const ip = await getPrinterIP();
+
+//   if (!ip) {
+//     throw new Error("NO_PRINTER_IP");
+//   }
+
+//   //const kotText = buildKOT(order, userName, tableName,isRunningOrder);
+
+//   console.log("🖨️ START PRINT:", order.id);
+
+//   if (IS_MOCK) {
+//     console.log(kotText);
+//     return true; 
+//   }
+
+//   try {
+//     // ✅ INIT
+//     await NetPrinter.init();
+
+//     // ✅ CLEAN OLD CONNECTION
+//     await safeCloseConnection();
+
+//     // ✅ CONNECT WITH TIMEOUT
+//     console.log("🔌 CONNECTING:", ip);
+
+//     await withTimeout(
+//       NetPrinter.connectPrinter(ip, 9100),
+//       CONNECT_TIMEOUT,
+//       "Printer connect"
+//     );
+
+//     console.log("✅ CONNECTED");
+
+//     // ✅ PRINT WITH TIMEOUT
+//     await withTimeout(
+//       NetPrinter.printBill(kotText),
+//       PRINT_TIMEOUT,
+//       "Print"
+//     );
+
+//     console.log("✅ PRINT SUCCESS");
+
+//     return true;
+//   } finally {
+//     // ✅ ALWAYS CLOSE CONNECTION
+//     setTimeout(() => {
+//       safeCloseConnection();
+//     }, AUTO_CLOSE_DELAY);
+//   }
+// };
+
+// // ===============================
+// // PROCESS QUEUE
+// // ===============================
+// const processQueue = async () => {
+//   if (isPrinting) return;
+
+//   isPrinting = true;
+
+//   while (printQueue.length > 0) {
+//     const job = printQueue.shift();
+
+//     while (isLocked) {
+//       await new Promise(r => setTimeout(r, 50));
+//     }
+
+//     isLocked = true;
+
+//     try {
+//       await executePrint(
+//         job.order,
+//         job.userName,
+//         job.tableName,
+//          job.isRunningOrder
+//       );
+//     } catch (e) {
+//       console.log("❌ PRINT ERROR:", e?.message || e);
+
+//       // ✅ OPTIONAL RETRY
+//       if (!job.retry) {
+//         printQueue.push({
+//           ...job,
+//           retry: true,
+//         });
+
+//         console.log("🔁 RETRY QUEUED");
+//       }
+//     } finally {
+//       isLocked = false;
+//     }
+//   }
+
+//   isPrinting = false;
+// };
+
+// // ===============================
+// // MAIN EXPORT
+// // ===============================
+// export const printKOT = async (
+//   order,
+//   userName,
+//   tableName,
+//    isRunningOrder = false
+// ) => {
+//   printQueue.push({
+//     order,
+//     userName,
+//     tableName,
+//     isRunningOrder,
+//   });
+
+//   processQueue();
+// };
+
+
+import {NetPrinter} from '@eerengine/react-native-thermal-receipt-printer-image-qr';
+
+const TOTAL_WIDTH = 48;
+
+const IS_MOCK = false;
+
+const CONNECT_TIMEOUT = 4000;
+const PRINT_TIMEOUT = 5000;
+const AUTO_CLOSE_DELAY = 1500;
+
+const BOLD_ON = '\x1B\x45\x01';
+const BOLD_OFF = '\x1B\x45\x00';
+
+const SMALL_TEXT = '\x1B\x4D\x01';
+const NORMAL_TEXT = '\x1B\x4D\x00';
+const DOUBLE_SIZE = '\x1D\x21\x10';
+const NORMAL_SIZE = '\x1D\x21\x00';
+// =====================================================
+// GLOBAL PRINT QUEUE
+// =====================================================
+
+let printQueue = [];
+let isPrinting = false;
+let isLocked = false;
+
+// =====================================================
+// TIMEOUT
+// =====================================================
+
+const withTimeout = (promise, ms, label = 'Operation') => {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => {
+        reject(new Error(`${label} timeout after ${ms}ms`));
+      }, ms),
+    ),
+  ]);
+};
+const centerDoubleWidth = (text = '') => {
+  // 48 normal columns = 24 columns when double-width
+  const DOUBLE_WIDTH_COLUMNS = Math.floor(TOTAL_WIDTH / 2);
+
+  const padding = Math.max(
+    0,
+    Math.floor(
+      (DOUBLE_WIDTH_COLUMNS - text.length) / 2,
+    ),
+  );
+
+  return ' '.repeat(padding) + text;
+};
+// =====================================================
+// HELPERS
+// =====================================================
+
+const centerText = (text = '') => {
+  const space = Math.max(
+    0,
+    Math.floor((TOTAL_WIDTH - text.length) / 2),
+  );
+
+  return ' '.repeat(space) + text + '\n';
+};
+
+const leftRight = (left = '', right = '') => {
+  const space = TOTAL_WIDTH - (left.length + right.length);
+
+  return (
+    left +
+    ' '.repeat(space > 0 ? space : 1) +
+    right +
+    '\n'
+  );
+};
+
+const LINE = '-'.repeat(TOTAL_WIDTH) + '\n';
+
+// =====================================================
+// BUILD KOT
+// =====================================================
+
+const buildKOT = (
+  order,
+  userName,
+  tableName,
+  isRunningOrder = false,
+) => {
+  let txt = '';
+
+  const d = new Date();
+
+  txt += '\n';
+
+  // HEADER
+txt += BOLD_ON;
+
+txt += DOUBLE_SIZE;
+txt += centerDoubleWidth('KITCHEN ORDER TICKET') + '\n';
+txt += NORMAL_SIZE;
+
+txt += BOLD_OFF;
+txt += '\n';
+//  txt += BOLD_ON;
+//     txt += centerText('');
+//     txt += BOLD_OFF;
+  if (isRunningOrder) {
+    txt += BOLD_ON;
+    txt += centerText('RUNNING ORDER');
+    txt += BOLD_OFF;
+  }
+ txt += BOLD_ON;
+    txt += centerText('');
+    txt += BOLD_OFF;
+  txt += leftRight(
+    `Date : ${d.toLocaleDateString('en-GB')}`,
+    `Time : ${d.toLocaleTimeString()}`,
+  );
+
+  txt += BOLD_ON;
+  txt += `Waiter : ${userName || 'N/A'}\n`;
+  txt += BOLD_OFF;
+
+  txt += LINE;
+
+  // ITEMS
+  txt += 'No    Name                         Qty\n';
+  txt += LINE;
+
+  const NAME_WIDTH = 30;
+
+  (order.items || []).forEach((item, i) => {
+    let name = item.product_name || '';
+
+    if (name.length > NAME_WIDTH) {
+      name = name.substring(0, NAME_WIDTH - 2) + '..';
+    }
+
+    txt +=
+      `${String(i + 1).padEnd(6)}` +
+      `${name.padEnd(30)}` +
+      `${parseFloat(item.qty || 0)
+        .toFixed(0)
+        .padStart(12)}\n`;
+
+    if (item.remarks?.trim()) {
+      txt += SMALL_TEXT;
+      txt += `      * ${item.remarks}\n`;
+      txt += NORMAL_TEXT;
+    }
+  });
+
+  txt += LINE;
+
+  // FOOTER
+  txt += '\n';
+
+  txt += leftRight(
+    `KOT : ${order.token_no || order.id || 'N/A'}`,
+    `TABLE : ${tableName || 'N/A'}`,
+  );
+
+  txt += LINE;
+
+  txt += centerText('*** THANK YOU ***');
+
+  txt += '\n\n\n';
+
+  return txt;
+};
+
+// =====================================================
+// SAFE CLOSE
+// =====================================================
+
 const safeCloseConnection = async () => {
   try {
-    await Promise.race([
-      NetPrinter.closeConn?.(),
-      new Promise(resolve =>
-        setTimeout(resolve, AUTO_CLOSE_DELAY)
-      ),
-    ]);
+    if (NetPrinter.closeConn) {
+      await Promise.race([
+        NetPrinter.closeConn(),
+        new Promise(resolve =>
+          setTimeout(resolve, AUTO_CLOSE_DELAY),
+        ),
+      ]);
+    }
 
-    console.log("🔌 CONNECTION CLOSED");
+    console.log('🔌 CONNECTION CLOSED');
   } catch (e) {
-    console.log("⚠️ CLOSE ERROR:", e);
+    console.log('⚠️ CLOSE ERROR:', e);
   }
 };
 
-// ===============================
-// EXECUTE PRINT
-// ===============================
-const executePrint = async (order, userName, tableName,isRunningOrder) => {
- const kotText = buildKOT(order, userName, tableName,isRunningOrder);
-  console.log("🖨️ START PRINT:", order.id);
+// =====================================================
+// EXECUTE SINGLE PRINT
+// =====================================================
 
-  // Mock Preview
-  if (IS_MOCK) {
-    console.log("========== KOT PREVIEW ==========");
-    console.log(kotText);
-    console.log("=================================");
+const executePrint = async (
+  order,
+  userName,
+  tableName,
+  isRunningOrder,
+) => {
+  const printerIP = order?.printer_ip;
+
+  const printerPort = Number(
+    order?.printer_port || 9100,
+  );
+
+  if (!printerIP) {
+    throw new Error('NO_PRINTER_IP_FROM_API');
+  }
+
+  if (!order?.items?.length) {
+    console.log(
+      `⚠️ No items for printer ${printerIP}`,
+    );
+
     return true;
   }
-  const ip = await getPrinterIP();
 
-  if (!ip) {
-    throw new Error("NO_PRINTER_IP");
-  }
+  const kotText = buildKOT(
+    order,
+    userName,
+    tableName,
+    isRunningOrder,
+  );
 
-  //const kotText = buildKOT(order, userName, tableName,isRunningOrder);
+  console.log(
+    `🖨️ START PRINT → ${printerIP}:${printerPort}`,
+  );
 
-  console.log("🖨️ START PRINT:", order.id);
+  console.log(
+    `📦 ITEMS → ${order.items.length}`,
+  );
+
+  // ===================================================
+  // MOCK
+  // ===================================================
 
   if (IS_MOCK) {
+    console.log('========== KOT PREVIEW ==========');
+    console.log(`PRINTER: ${printerIP}:${printerPort}`);
     console.log(kotText);
+    console.log('=================================');
+
     return true;
   }
 
   try {
-    // ✅ INIT
+    // INIT
     await NetPrinter.init();
 
-    // ✅ CLEAN OLD CONNECTION
+    // CLOSE OLD CONNECTION
     await safeCloseConnection();
 
-    // ✅ CONNECT WITH TIMEOUT
-    console.log("🔌 CONNECTING:", ip);
-
-    await withTimeout(
-      NetPrinter.connectPrinter(ip, 9100),
-      CONNECT_TIMEOUT,
-      "Printer connect"
+    // CONNECT
+    console.log(
+      `🔌 CONNECTING → ${printerIP}:${printerPort}`,
     );
 
-    console.log("✅ CONNECTED");
+    await withTimeout(
+      NetPrinter.connectPrinter(
+        printerIP,
+        printerPort,
+      ),
+      CONNECT_TIMEOUT,
+      'Printer connect',
+    );
 
-    // ✅ PRINT WITH TIMEOUT
+    console.log(
+      `✅ CONNECTED → ${printerIP}:${printerPort}`,
+    );
+
+    // PRINT
     await withTimeout(
       NetPrinter.printBill(kotText),
       PRINT_TIMEOUT,
-      "Print"
+      'Print',
     );
 
-    console.log("✅ PRINT SUCCESS");
+    console.log(
+      `✅ PRINT SUCCESS → ${printerIP}:${printerPort}`,
+    );
 
     return true;
   } finally {
-    // ✅ ALWAYS CLOSE CONNECTION
     setTimeout(() => {
       safeCloseConnection();
     }, AUTO_CLOSE_DELAY);
   }
 };
 
-// ===============================
+// =====================================================
 // PROCESS QUEUE
-// ===============================
+// =====================================================
+
 const processQueue = async () => {
-  if (isPrinting) return;
+  if (isPrinting) {
+    return;
+  }
 
   isPrinting = true;
 
   while (printQueue.length > 0) {
     const job = printQueue.shift();
 
+    // Wait for lock
     while (isLocked) {
-      await new Promise(r => setTimeout(r, 50));
+      await new Promise(resolve =>
+        setTimeout(resolve, 50),
+      );
     }
 
     isLocked = true;
@@ -317,19 +679,32 @@ const processQueue = async () => {
         job.order,
         job.userName,
         job.tableName,
-         job.isRunningOrder
+        job.isRunningOrder,
+      );
+
+      console.log(
+        `✅ QUEUE JOB COMPLETED → ${job.order?.printer_ip}`,
       );
     } catch (e) {
-      console.log("❌ PRINT ERROR:", e?.message || e);
+      console.log(
+        '❌ PRINT ERROR:',
+        e?.message || e,
+      );
 
-      // ✅ OPTIONAL RETRY
+      // Retry once
       if (!job.retry) {
         printQueue.push({
           ...job,
           retry: true,
         });
 
-        console.log("🔁 RETRY QUEUED");
+        console.log(
+          `🔁 RETRY QUEUED → ${job.order?.printer_ip}`,
+        );
+      } else {
+        console.log(
+          `❌ FINAL PRINT FAILURE → ${job.order?.printer_ip}`,
+        );
       }
     } finally {
       isLocked = false;
@@ -339,21 +714,35 @@ const processQueue = async () => {
   isPrinting = false;
 };
 
-// ===============================
-// MAIN EXPORT
-// ===============================
+// =====================================================
+// MAIN PRINT FUNCTION
+// =====================================================
+
 export const printKOT = async (
   order,
   userName,
   tableName,
-   isRunningOrder = false
+  isRunningOrder,
 ) => {
+  if (!order?.printer_ip) {
+    console.log(
+      '❌ Cannot queue print: printer_ip missing',
+    );
+
+    return;
+  }
+
   printQueue.push({
     order,
     userName,
     tableName,
     isRunningOrder,
+    retry: false,
   });
+
+  console.log(
+    `📥 PRINT QUEUED → ${order.printer_ip}:${order.printer_port || 9100}`,
+  );
 
   processQueue();
 };

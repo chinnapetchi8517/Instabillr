@@ -5,6 +5,8 @@ export const ApiService = {
 
   login: async (data, config = {}) => {
     const response = await api.post('/login', data, config);
+    console.log(response,"login response");
+    
     return response.data;
   },
 
@@ -24,7 +26,7 @@ export const ApiService = {
 
   getProducts: async (config = {}) => {
     const response = await api.get('/products', config);
-     console.log(response,"product");
+    // console.log(response,"product");
     return response.data;
   },
 
@@ -32,19 +34,26 @@ export const ApiService = {
 
   // Create order
   createOrder: async (data, config = {}) => {
+    ///console.log(data,"createorder");
+    
     const response = await api.post('/order', data, config);
+    console.log(response,"createorder_response");
     return response.data;
   },
 
   // Get order by table
   getOrderByTable: async (tableId, config = {}) => {
     const response = await api.get(`/order/table/${tableId}`, config);
+    //console.log(response,"getorderbytable");
+    
     return response.data;
   },
 
   // Add items to order
   addItemsToOrder: async (orderId, data, config = {}) => {
+    //console.log(data,"add-items");
     const response = await api.post(`/order/${orderId}/add-items`, data, config);
+    //console.log(response,"add-items_response");
     return response.data;
   },
 
@@ -107,12 +116,14 @@ export const ApiService = {
   },
   // Report by table + date
   orderUpdate: async (orderId, data, config = {}) => {
+    //console.log(data,"add-items");
     const response = await api.put(`/waiter-orders/${orderId}/update`, data, config);
+     //console.log(response,"orderUpdate_response");
     return response.data;
   },
   getCategories:async (config = {}) => {
     const response = await api.get(`/categories`, config);
-    console.log(response,"responseresponseresponseresponse");
+    //console.log(response,"responseresponseresponseresponse");
     
     return response.data;
   },

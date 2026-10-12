@@ -5,10 +5,10 @@ import { logger } from "../Utils/logger";
 export const api = axios.create({
    
   //live_url
-  baseURL: 'https://jkans.cnxhub.in/api', 
+  //baseURL: 'https://jkans.cnxhub.in/api', 
 
   //jkans demo
-  //baseURL:"https://jkansfoods.sarasbillingpro.com/api",
+baseURL:"https://jkansfoods.sarasbillingpro.com/api",
 
   
   //taven house demo

@@ -28,7 +28,9 @@ import { useLoader } from '../../Context/LoaderContext';
 import Icons from 'react-native-vector-icons/Ionicons';
 import fonts from '../../Utils/fonts';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { savePrinterIP, printKOT } from '../../Utils/Printer';
+// import { savePrinterIP, printKOT } from '../../Utils/Printer';
+import { printKOT } from '../../Utils/Printer';
+
 import Toast from 'react-native-toast-message';
 import { safeApiCall } from '../../Services/safeApiCall';
 import QueueMonitorBadge from '../../Components/QueueMonitorBadge';
@@ -69,6 +71,7 @@ const [selectedTable, setSelectedTable] = useState(null);
     setProducts(formatProductsForUi(rawProducts));
     const menus = getMenusRaw();
 let categories = getSubCategoriesFromMenus(menus);
+console.log(categories,"categoriescategories");
 
 // Move "All" to the first position
 categories = [
@@ -203,9 +206,9 @@ const processOrder = async () => {
   const existingOrderId = getExistingOrderId();
 
   if (existingOrderId) {
-    await addItemsToExistingOrder(existingOrderId);
+    await addItemsToExistingOrder(existingOrderId,true);
   } else {
-    await createNewOrder();
+    await createNewOrder(false);
   }
 };
 // const processOrder = async () => {
@@ -431,8 +434,61 @@ const processOrder = async () => {
 // ===============================
 // CREATE NEW ORDER
 // ===============================
+const printKOTGroups = async (kot, orderData, tableName,isRunningOrder) => {
+  if (!kot?.groups?.length) {
+    console.log('⚠️ No KOT printer groups');
+    return;
+  }
 
-const createNewOrder = async () => {
+  console.log(
+    '🖨️ KOT GROUPS:',
+    JSON.stringify(kot.groups, null, 2),
+  );
+
+  for (const group of kot.groups) {
+    const printerIP = group?.printer_ip;
+    const printerPort = Number(group?.printer_port || 9100);
+    const items = group?.items || [];
+
+    if (!printerIP || !items.length) {
+      continue;
+    }
+
+    try {
+      console.log(
+        `🖨️ Printing ${items.length} items → ${printerIP}:${printerPort}`,
+      );
+
+      await printKOT(
+        {
+          ...orderData,
+          items,
+          token_no: kot.token_no || orderData.token_no,
+          printer_ip: printerIP,
+          printer_port: printerPort,
+        },
+        userName,
+        tableName,
+        isRunningOrder,
+      );
+
+      console.log(`✅ Printed → ${printerIP}`);
+    } catch (error) {
+      console.log(
+        `❌ Printer failed → ${printerIP}`,
+        error,
+      );
+
+      Toast.show({
+        type: 'error',
+        text1: 'Printer unavailable',
+        text2: `${printerIP} failed`,
+        position: 'bottom',
+      });
+    }
+  }
+};
+const createNewOrder = async (isRunningOrder) => {
   if (isSubmitting || orderSubmitLockRef.current) {
     return;
   }
@@ -505,46 +561,80 @@ const createNewOrder = async () => {
     }
 
    const data = response.data;
-
-// ✅ refresh tables first
+const kot = response.kot;
+// Refresh tables
 await refreshTablesCacheFromNetwork().catch(() => {});
 
-// ✅ local refresh
+// Local refresh
 hydrateCatalogFromLocal();
 
-// ✅ callback
+// Callback
 route.params?.onSelectProduct?.(
   data.items || []
 );
 
-// success toast
+// Success
 Toast.show({
   type: 'success',
   text1: 'Order created successfully',
 });
 
-// navigate immediately
+// Navigate immediately
 navigation.replace('OrderScreen', {
   tableId: data.table_id,
   tableName,
+  orderData: data,
+  orderType: data.order_type,
 });
 
-// print in background
+// Print KOT automatically in background
 setTimeout(async () => {
-  try {
-    await printKOT(
-      {
-        ...data,
-        items: data.items,
-      },
-      userName,
-      tableName,
-      false
-    );
-  } catch (err) {
-    console.log('❌ PRINT ERROR:', err);
-  }
-}, 500);
+  await printKOTGroups(
+    kot,
+    data,
+    tableName,
+    isRunningOrder
+  );
+}, 300);
+// // ✅ refresh tables first
+// await refreshTablesCacheFromNetwork().catch(() => {});
+
+// // ✅ local refresh
+// hydrateCatalogFromLocal();
+
+// // ✅ callback
+// route.params?.onSelectProduct?.(
+//   data.items || []
+// );
+
+// // success toast
+// Toast.show({
+//   type: 'success',
+//   text1: 'Order created successfully',
+// });
+
+// // navigate immediately
+// navigation.replace('OrderScreen', {
+//   tableId: data.table_id,
+//   tableName,
+// });
+
+// // print in background
+// setTimeout(async () => {
+//   try {
+//     await printKOT(
+//       {
+//         ...data,
+//         items: data.items,
+//       },
+//       userName,
+//       tableName,
+//       false
+//     );
+//   } catch (err) {
+//     console.log('❌ PRINT ERROR:', err);
+//   }
+// }, 500);
   } catch (e) {
       await refreshTablesCacheFromNetwork().catch(() => {});
 
@@ -574,7 +664,7 @@ setTimeout(async () => {
 
 
 const addItemsToExistingOrder = async (
-  passedOrderId,
+  passedOrderId,isRunningOrder
 ) => {
   if (isSubmitting || orderSubmitLockRef.current) {
     return;
@@ -632,6 +722,7 @@ const addItemsToExistingOrder = async (
         source: 'ItemsScreen.addItemsToExistingOrder',
       },
     );
+// console.log(response,"responseresponseresponse_additems ");
 
     if (!response?.status) {
       Toast.show({
@@ -646,14 +737,15 @@ const addItemsToExistingOrder = async (
     }
 
     const data = response.data;
-  const kotItems = cart.map(i => ({
-      product_id: parseInt(i.id),
-      product_name: i.name,
-      qty: i.qty,
-      unit_price_inc_tax: i.price,
-      variation_id: i.variation_id || 1,
-      remarks: i.remark || '',
-    }));
+    const kot = response.kot;
+  // const kotItems = cart.map(i => ({
+  //     product_id: parseInt(i.id),
+  //     product_name: i.name,
+  //     qty: i.qty,
+  //     unit_price_inc_tax: i.price,
+  //     variation_id: i.variation_id || 1,
+  //     remarks: i.remark || '',
+  //   }));
 
 // ✅ refresh tables first
 await refreshTablesCacheFromNetwork().catch(() => {});
@@ -676,24 +768,34 @@ Toast.show({
 navigation.replace('OrderScreen', {
   tableId: data.table_id,
   tableName,
+  orderData: data,
+  orderType: data.order_type,
 });
 
 // print in background
+// setTimeout(async () => {
+//   try {
+//     await printKOT(
+//       {
+//         ...data,
+//         items: kotItems,
+//       },
+//       userName,
+//       tableName,
+//       true
+//     );
+//   } catch (err) {
+//     console.log('❌ PRINT ERROR:', err);
+//   }
+// }, 500);
 setTimeout(async () => {
-  try {
-    await printKOT(
-      {
-        ...data,
-        items: kotItems,
-      },
-      userName,
-      tableName,
-      true
-    );
-  } catch (err) {
-    console.log('❌ PRINT ERROR:', err);
-  }
-}, 500);
+  await printKOTGroups(
+    kot,
+    data,
+    tableName,
+   isRunningOrder
+  );
+}, 300);
   
 
     Toast.show({
@@ -740,50 +842,71 @@ const onRefresh = async () => {
     setRefreshing(false);
   }
 };
- const handleDone = async () => {
-  try {
-    // ✅ prevent double tap
-    if (orderSubmitLockRef.current || isSubmitting) {
-      return;
-    }
+const handleDone = async () => {
+  if (orderSubmitLockRef.current || isSubmitting) {
+    return;
+  }
 
-    // ✅ empty cart
-    if (cart.length === 0) {
-      Toast.show({
-        type: 'error',
-        text1: 'Please add at least one item',
-        position: 'bottom',
-      });
-      return;
-    }
-
-    // ✅ table select
-    if (!route.params?.tableId && !selectedTable) {
-      setTableModal(true);
-      return;
-    }
-
-    // ✅ printer ip check
-    const ip = await AsyncStorage.getItem('PRINTER_IP');
-
-    if (!ip) {
-      setPendingOrder(true);
-      setIpModal(true);
-      return;
-    }
-
-    // ✅ continue order
- await processOrder();
-  } catch (e) {
-    console.log('❌ HANDLE DONE ERROR:', e);
-
+  if (cart.length === 0) {
     Toast.show({
       type: 'error',
-      text1: 'Something went wrong',
+      text1: 'Please add at least one item',
       position: 'bottom',
     });
+    return;
   }
+
+  if (!route.params?.tableId && !selectedTable) {
+    setTableModal(true);
+    return;
+  }
+
+  await processOrder();
 };
+//  const handleDone = async () => {
+//   try {
+//     // ✅ prevent double tap
+//     if (orderSubmitLockRef.current || isSubmitting) {
+//       return;
+//     }
+
+//     // ✅ empty cart
+//     if (cart.length === 0) {
+//       Toast.show({
+//         type: 'error',
+//         text1: 'Please add at least one item',
+//         position: 'bottom',
+//       });
+//       return;
+//     }
+
+//     // ✅ table select
+//     if (!route.params?.tableId && !selectedTable) {
+//       setTableModal(true);
+//       return;
+//     }
+
+//     // ✅ printer ip check
+//     const ip = await AsyncStorage.getItem('PRINTER_IP');
+
+//     if (!ip) {
+//       setPendingOrder(true);
+//       setIpModal(true);
+//       return;
+//     }
+
+//     // ✅ continue order
+//  await processOrder();
+//   } catch (e) {
+//     console.log('❌ HANDLE DONE ERROR:', e);
+
+//     Toast.show({
+//       type: 'error',
+//       text1: 'Something went wrong',
+//       position: 'bottom',
+//     });
+//   }
+// };
   const getQty = id => {
     const item = cart.find(i => i.id === id);
     return item ? item.qty : 0;
@@ -978,7 +1101,7 @@ const updateRemark = (id, text) => {
         style={{
     marginTop: hp("2%"),
   }}
-        // style={{marginTop:-98}}
+        //style={{marginTop:-198}}
           key={selectedSubCategoryId}
           data={filteredData}
           contentContainerStyle={{ paddingBottom: hp('1%') }}
